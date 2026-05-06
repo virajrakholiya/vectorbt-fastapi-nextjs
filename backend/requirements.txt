@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+vectorbt
+pandas
+numpy
+yfinance
+fyers-apiv3
+pydantic
+python-dotenv
