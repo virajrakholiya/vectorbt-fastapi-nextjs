@@ -9,8 +9,8 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from strategies.sma_crossover import SMACrossoverStrategy
-from strategies.sma_rsi import SMARSIStrategy
+from strategies.intraday_scalper import IntradayScalperStrategy
+from strategies.pro_trader import ProTraderStrategy
 
 app = FastAPI(title="VectorBT Backtesting API")
 
@@ -25,29 +25,42 @@ app.add_middleware(
 data_fetcher = DataFetcher()
 
 STRATEGY_MAP = {
-    "sma_crossover": SMACrossoverStrategy,
-    "sma_rsi": SMARSIStrategy,
+    "pro_trader": ProTraderStrategy,
+    "intraday_scalper": IntradayScalperStrategy,
 }
 
 STRATEGY_META = {
-    "sma_crossover": {
-        "label": "SMA Crossover",
-        "description": "Classic moving-average crossover.",
+    "pro_trader": {
+        "label": "Pro Trader (ADX + ATR + Multi-Signal)",
+        "description": "Production-grade strategy. Trends-only filter (ADX + EMA stack), 4 entry triggers (MACD cross / RSI reversal / Donchian breakout / BB bounce), ATR-adaptive stops with 2.2:1 reward-risk. Pyramids on continuation. Built for stable + profitable + frequent.",
         "params": [
-            {"name": "fast_window", "label": "Fast SMA", "type": "number", "default": 10, "min": 2, "max": 200},
-            {"name": "slow_window", "label": "Slow SMA", "type": "number", "default": 50, "min": 5, "max": 400},
+            {"name": "ema_fast", "label": "EMA Fast", "type": "number", "default": 9, "min": 2, "max": 50},
+            {"name": "ema_mid", "label": "EMA Mid", "type": "number", "default": 21, "min": 5, "max": 100},
+            {"name": "ema_slow", "label": "EMA Slow", "type": "number", "default": 50, "min": 10, "max": 200},
+            {"name": "rsi_window", "label": "RSI Period", "type": "number", "default": 14, "min": 2, "max": 100},
+            {"name": "rsi_oversold", "label": "RSI Oversold", "type": "number", "default": 35, "min": 10, "max": 50},
+            {"name": "adx_window", "label": "ADX Window", "type": "number", "default": 14, "min": 5, "max": 50},
+            {"name": "adx_threshold", "label": "ADX Threshold", "type": "number", "default": 18, "min": 10, "max": 40},
+            {"name": "donchian_window", "label": "Donchian Window", "type": "number", "default": 20, "min": 5, "max": 100},
+            {"name": "bb_window", "label": "Bollinger Window", "type": "number", "default": 20, "min": 5, "max": 100},
+            {"name": "atr_window", "label": "ATR Window", "type": "number", "default": 14, "min": 5, "max": 50},
+            {"name": "stop_atr_mult", "label": "Stop ATR Mult", "type": "number", "default": 1.8, "min": 0.5, "max": 5.0, "step": 0.1},
+            {"name": "target_atr_mult", "label": "Target ATR Mult", "type": "number", "default": 4.0, "min": 1.0, "max": 10.0, "step": 0.1},
         ],
     },
-    "sma_rsi": {
-        "label": "SMA + RSI + Trailing Stop",
-        "description": "SMA crossover with RSI confirmation and trailing stop loss for accuracy.",
+    "intraday_scalper": {
+        "label": "Intraday Scalper (ORB + EMA + Pyramid)",
+        "description": "Stock-equivalent of an intraday options scalper. ORB breakout + EMA bias + RSI filter, pyramids on continuation, scalps on tight profit target / trailing stop / max-hold timeout.",
         "params": [
-            {"name": "fast_window", "label": "Fast SMA", "type": "number", "default": 20, "min": 2, "max": 200},
-            {"name": "slow_window", "label": "Slow SMA", "type": "number", "default": 50, "min": 5, "max": 400},
+            {"name": "breakout_window", "label": "Breakout Window", "type": "number", "default": 5, "min": 2, "max": 50},
+            {"name": "ema_fast", "label": "EMA Fast", "type": "number", "default": 9, "min": 2, "max": 100},
+            {"name": "ema_slow", "label": "EMA Slow", "type": "number", "default": 21, "min": 5, "max": 200},
             {"name": "rsi_window", "label": "RSI Period", "type": "number", "default": 14, "min": 2, "max": 100},
-            {"name": "rsi_overbought", "label": "RSI Overbought", "type": "number", "default": 70, "min": 50, "max": 95},
-            {"name": "rsi_oversold", "label": "RSI Oversold", "type": "number", "default": 30, "min": 5, "max": 50},
-            {"name": "stop_loss_pct", "label": "Trailing Stop %", "type": "number", "default": 0.05, "min": 0.005, "max": 0.5, "step": 0.005},
+            {"name": "rsi_floor", "label": "RSI Floor", "type": "number", "default": 45, "min": 20, "max": 60},
+            {"name": "rsi_ceiling", "label": "RSI Ceiling", "type": "number", "default": 75, "min": 60, "max": 95},
+            {"name": "max_hold", "label": "Max Hold (bars)", "type": "number", "default": 5, "min": 1, "max": 100},
+            {"name": "profit_target", "label": "Profit Target %", "type": "number", "default": 0.03, "min": 0.005, "max": 0.5, "step": 0.005},
+            {"name": "stop_loss", "label": "Trailing Stop %", "type": "number", "default": 0.015, "min": 0.005, "max": 0.2, "step": 0.005},
         ],
     },
 }
@@ -80,7 +93,12 @@ async def run_backtest(request: BacktestRequest):
             slippage=0.0005,
         )
 
-        portfolio = engine.run(entries, exits, size=1.0)
+        portfolio = engine.run(
+            entries,
+            exits,
+            size=getattr(strategy, "entry_size", 1.0),
+            accumulate=getattr(strategy, "accumulate", False),
+        )
 
         metrics = engine.get_metrics(portfolio)
         charts = engine.get_charts(portfolio, symbols=request.symbols)

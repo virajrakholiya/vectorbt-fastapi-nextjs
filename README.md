@@ -91,4 +91,4 @@ The frontend dashboard will be available at [http://localhost:3000](http://local
 
 - `/backend` - FastAPI server, VectorBT execution engine, and Fyers API client.
 - `/frontend` - Next.js React application, UI components, charts, and metrics cards.
-- `/strategies` - Custom Python trading strategies loaded dynamically by the backend (e.g., `sma_crossover.py`).
+- `/strategies` - Custom Python trading strategies loaded dynamically by the backend (e.g., `pro_trader.py`).

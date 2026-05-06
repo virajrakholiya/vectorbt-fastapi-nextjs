@@ -42,7 +42,13 @@ class BacktestEngine:
         self.fees = fees
         self.slippage = slippage
 
-    def run(self, entries: pd.DataFrame, exits: pd.DataFrame, size: float = 1.0) -> vbt.Portfolio:
+    def run(
+        self,
+        entries: pd.DataFrame,
+        exits: pd.DataFrame,
+        size: float = 1.0,
+        accumulate: bool = False,
+    ) -> vbt.Portfolio:
         """
         Run VectorBT portfolio simulation.
         Multi-symbol portfolios are grouped with shared cash to behave as a unified portfolio.
@@ -66,6 +72,7 @@ class BacktestEngine:
             freq="D",
             group_by=True if is_multi_symbol else None,
             cash_sharing=True if is_multi_symbol else False,
+            accumulate=accumulate,
         )
 
         return portfolio
@@ -100,27 +107,36 @@ class BacktestEngine:
 
     def get_charts(self, portfolio: vbt.Portfolio, symbols: list = None) -> dict:
         """Aggregate equity & drawdown across symbols + per-symbol equity curves."""
-        values = portfolio.value()
-        drawdowns = portfolio.drawdown()
+        # Combined (grouped) view — single series for total portfolio
+        try:
+            total_values = portfolio.value()
+        except Exception:
+            total_values = pd.Series(dtype=float)
+        try:
+            total_drawdown = portfolio.drawdown()
+        except Exception:
+            total_drawdown = pd.Series(dtype=float)
+
+        # Force per-asset view for symbol breakdown (even when group_by=True)
+        try:
+            per_asset_values = portfolio.value(group_by=False)
+        except Exception:
+            per_asset_values = total_values
 
         per_symbol_equity = {}
-
-        if isinstance(values, pd.DataFrame):
-            for col in values.columns:
+        if isinstance(per_asset_values, pd.DataFrame):
+            for col in per_asset_values.columns:
                 sym = _extract_symbol(col, symbols)
-                series = values[col]
+                series = per_asset_values[col]
                 per_symbol_equity[sym] = [
                     {"date": idx.strftime("%Y-%m-%d"), "value": float(v)}
                     for idx, v in series.items()
                 ]
-            total_values = values.sum(axis=1)
-        else:
-            total_values = values
 
-        if isinstance(drawdowns, pd.DataFrame):
-            total_drawdown = drawdowns.mean(axis=1)
-        else:
-            total_drawdown = drawdowns
+        if isinstance(total_values, pd.DataFrame):
+            total_values = total_values.sum(axis=1)
+        if isinstance(total_drawdown, pd.DataFrame):
+            total_drawdown = total_drawdown.mean(axis=1)
 
         equity_curve = [
             {"date": idx.strftime("%Y-%m-%d"), "value": float(val)}
@@ -151,13 +167,22 @@ class BacktestEngine:
 
             symbol = _extract_symbol(row.get("Column"), symbols)
 
+            entry_price_val = float(row["Avg Entry Price"]) if pd.notnull(row.get("Avg Entry Price")) else None
+            exit_price_val = float(row["Avg Exit Price"]) if pd.notnull(row.get("Avg Exit Price")) else None
+            qty = float(row["Size"]) if pd.notnull(row.get("Size")) else 0.0
+
+            trade_amount = entry_price_val * qty if entry_price_val is not None else 0.0
+            exit_amount = exit_price_val * qty if exit_price_val is not None else None
+
             trades_list.append({
                 "symbol": symbol,
                 "entry_date": row["Entry Timestamp"].strftime("%Y-%m-%d") if pd.notnull(row.get("Entry Timestamp")) else None,
                 "exit_date": row["Exit Timestamp"].strftime("%Y-%m-%d") if pd.notnull(row.get("Exit Timestamp")) else None,
-                "entry_price": float(row["Avg Entry Price"]) if pd.notnull(row.get("Avg Entry Price")) else None,
-                "exit_price": float(row["Avg Exit Price"]) if pd.notnull(row.get("Avg Exit Price")) else None,
-                "quantity": float(row["Size"]) if pd.notnull(row.get("Size")) else 0.0,
+                "entry_price": entry_price_val,
+                "exit_price": exit_price_val,
+                "quantity": qty,
+                "trade_amount": trade_amount,
+                "exit_amount": exit_amount,
                 "profit_loss": float(row["PnL"]) if pd.notnull(row.get("PnL")) else 0.0,
                 "return_pct": float(row["Return"]) * 100 if pd.notnull(row.get("Return")) else 0.0,
                 "fees": entry_fees + exit_fees,

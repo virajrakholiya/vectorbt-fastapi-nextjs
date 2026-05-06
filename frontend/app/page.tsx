@@ -1,26 +1,238 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area 
+import { useState, useMemo, useEffect } from "react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, Legend,
 } from "recharts";
 import {
-  TrendingUp, TrendingDown, Wallet, BarChart3, PieChart, Activity, Download, Play, Settings, Calendar, Coins, Tag
+  TrendingUp, TrendingDown, Wallet, BarChart3, PieChart, Activity, Download, Play,
+  Settings, Calendar, Coins, Tag, LayoutGrid, ListOrdered, Sparkles, ArrowUpRight,
+  ArrowDownRight, Target, Percent, CircleDollarSign, AlertTriangle, ClipboardCopy, Check,
 } from "lucide-react";
 import { TradingChart } from "@/components/TradingChart";
+
+type Trade = {
+  symbol: string;
+  entry_date: string | null;
+  exit_date: string | null;
+  entry_price: number | null;
+  exit_price: number | null;
+  quantity: number;
+  trade_amount: number;
+  exit_amount: number | null;
+  profit_loss: number;
+  return_pct: number;
+  fees: number;
+  status: string;
+  direction: string;
+};
+
+type SymbolBreakdown = {
+  symbol: string;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  open_trades: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_pnl_per_trade: number;
+  avg_return_pct: number;
+  best_trade: number;
+  worst_trade: number;
+  fees_paid: number;
+};
+
+type StrategyMeta = {
+  id: string;
+  label: string;
+  description: string;
+  params: { name: string; label: string; type: string; default: number; min?: number; max?: number; step?: number }[];
+};
+
+const PALETTE = ["#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#ef4444", "#84cc16"];
+
+const fmtCurrency = (n: number, max = 0) =>
+  `₹${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: max })}`;
+
+const fmtPct = (n: number, dp = 2) =>
+  `${(n ?? 0).toFixed(dp)}%`;
+
+function sampleArray<T>(arr: T[], n: number): T[] {
+  if (arr.length <= n) return arr;
+  const step = Math.max(1, Math.floor(arr.length / n));
+  const out: T[] = [];
+  for (let i = 0; i < arr.length; i += step) out.push(arr[i]);
+  if (out[out.length - 1] !== arr[arr.length - 1]) out.push(arr[arr.length - 1]);
+  return out;
+}
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
+  const [strategies, setStrategies] = useState<StrategyMeta[]>([]);
+  const [activeTab, setActiveTab] = useState<"overview" | "symbols" | "trades">("overview");
+  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
+  const [tradesFilter, setTradesFilter] = useState<string>("ALL");
+  const [tradesPnLFilter, setTradesPnLFilter] = useState<"all" | "wins" | "losses" | "open">("all");
+  const [copied, setCopied] = useState(false);
+
   const [config, setConfig] = useState({
-    strategy_name: "sma_crossover",
+    strategy_name: "pro_trader",
     symbols: ["RELIANCE", "TCS", "INFY"],
     start_date: "2023-01-01",
     end_date: "2023-12-31",
     initial_capital: 50000,
-    params: { fast_window: 10, slow_window: 50 }
+    params: {} as Record<string, number>,
   });
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/strategies")
+      .then((r) => r.json())
+      .then((d) => setStrategies(d.strategies || []))
+      .catch(() => {});
+  }, []);
+
+  const currentStrategy = strategies.find((s) => s.id === config.strategy_name);
+
+  // Sync params when strategy changes
+  useEffect(() => {
+    if (!currentStrategy) return;
+    const defaults: Record<string, number> = {};
+    currentStrategy.params.forEach((p) => {
+      defaults[p.name] = config.params[p.name] ?? p.default;
+    });
+    setConfig((c) => ({ ...c, params: defaults }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.strategy_name, strategies.length]);
+
+  const buildReport = (): string => {
+    if (!data) return "";
+    const m = data.metrics;
+    const breakdown: SymbolBreakdown[] = m.symbol_breakdown ?? [];
+    const trades: Trade[] = data.trades ?? [];
+    const equity = data.charts?.equity_curve ?? [];
+    const drawdown = data.charts?.drawdown ?? [];
+
+    const peakEquity = equity.length ? Math.max(...equity.map((p: any) => p.value)) : 0;
+    const troughEquity = equity.length ? Math.min(...equity.map((p: any) => p.value)) : 0;
+    const peakDD = drawdown.length ? Math.min(...drawdown.map((p: any) => p.value)) : 0;
+
+    const winningTrades = trades.filter((t) => t.profit_loss > 0 && t.status.toLowerCase() !== "open");
+    const losingTrades = trades.filter((t) => t.profit_loss < 0 && t.status.toLowerCase() !== "open");
+    const openTrades = trades.filter((t) => t.status.toLowerCase() === "open");
+
+    const avgWin = winningTrades.length ? winningTrades.reduce((s, t) => s + t.profit_loss, 0) / winningTrades.length : 0;
+    const avgLoss = losingTrades.length ? losingTrades.reduce((s, t) => s + t.profit_loss, 0) / losingTrades.length : 0;
+    const profitFactor = avgLoss !== 0 ? Math.abs((avgWin * winningTrades.length) / (avgLoss * losingTrades.length)) : 0;
+    const expectancy = trades.length ? (m.net_profit ?? 0) / trades.length : 0;
+
+    const strategy = strategies.find((s) => s.id === config.strategy_name);
+    const paramsString = Object.entries(config.params).length
+      ? Object.entries(config.params).map(([k, v]) => `- ${k}: ${v}`).join("\n")
+      : "(strategy defaults used)";
+
+    const tradesTable = trades.length === 0
+      ? "_No trades._"
+      : [
+          "| # | Symbol | Entry Date | Exit Date | Entry ₹ | Exit ₹ | Qty | Trade Amount ₹ | P&L ₹ | Return % | Fees ₹ | Status |",
+          "|---|--------|-----------|-----------|---------|--------|-----|----------------|-------|---------|--------|--------|",
+          ...trades.map((t, i) => {
+            const status = t.status.toLowerCase() === "open" ? "Open" : t.profit_loss >= 0 ? "Win" : "Loss";
+            return `| ${i + 1} | ${t.symbol} | ${t.entry_date ?? "—"} | ${t.exit_date ?? "—"} | ${t.entry_price?.toFixed(2) ?? "—"} | ${t.exit_price?.toFixed(2) ?? "—"} | ${t.quantity.toFixed(2)} | ${t.trade_amount.toFixed(2)} | ${t.profit_loss.toFixed(2)} | ${t.return_pct.toFixed(2)} | ${t.fees.toFixed(2)} | ${status} |`;
+          }),
+        ].join("\n");
+
+    const breakdownTable = breakdown.length === 0
+      ? "_No per-symbol data._"
+      : [
+          "| Symbol | Trades | Wins | Losses | Open | Win Rate % | Total P&L ₹ | Avg P&L ₹ | Best ₹ | Worst ₹ | Fees ₹ |",
+          "|--------|--------|------|--------|------|-----------|-------------|-----------|--------|---------|--------|",
+          ...breakdown.map((b) =>
+            `| ${b.symbol} | ${b.total_trades} | ${b.winning_trades} | ${b.losing_trades} | ${b.open_trades} | ${b.win_rate.toFixed(2)} | ${b.total_pnl.toFixed(2)} | ${b.avg_pnl_per_trade.toFixed(2)} | ${b.best_trade.toFixed(2)} | ${b.worst_trade.toFixed(2)} | ${b.fees_paid.toFixed(2)} |`
+          ),
+        ].join("\n");
+
+    return `# Backtest Report
+
+## Goal
+Improve this trading strategy. Suggest concrete changes to entry/exit rules, parameters, filters, position sizing, or risk management to make it more **profitable**, **stable** (lower drawdown / higher Sharpe), and **higher trade frequency**. Justify each suggestion with the data below.
+
+## Strategy
+- **ID**: \`${config.strategy_name}\`
+- **Name**: ${strategy?.label ?? config.strategy_name}
+- **Description**: ${strategy?.description ?? "—"}
+
+### Parameters
+${paramsString}
+
+### Strategy Logic (rules used in code)
+${strategy?.params.map((p) => `- ${p.label}: default ${p.default}, range ${p.min ?? "?"}–${p.max ?? "?"}`).join("\n") ?? ""}
+
+## Backtest Setup
+- **Symbols**: ${config.symbols.join(", ")}
+- **Period**: ${config.start_date} → ${config.end_date}
+- **Initial Capital**: ₹${config.initial_capital.toLocaleString()}
+- **Fees**: 0.10% per side
+- **Slippage**: 0.05%
+- **Data source**: FYERS (NSE) / yfinance fallback, daily bars
+- **Timeframe**: Daily
+
+## Headline Metrics
+| Metric | Value |
+|--------|-------|
+| Net P&L | ₹${(m.net_profit ?? 0).toFixed(2)} |
+| Total Return | ${(m.total_return ?? 0).toFixed(2)}% |
+| Final Capital | ₹${(m.final_value ?? 0).toFixed(2)} |
+| Initial Capital | ₹${(m.initial_capital ?? config.initial_capital).toFixed(2)} |
+| Win Rate | ${(m.win_rate ?? 0).toFixed(2)}% |
+| Total Trades | ${m.total_trades ?? trades.length} |
+| Sharpe Ratio | ${(m.sharpe_ratio ?? 0).toFixed(3)} |
+| Max Drawdown | ${(m.max_drawdown ?? 0).toFixed(2)}% |
+| Brokerage Paid | ₹${(m.fees_paid ?? 0).toFixed(2)} |
+
+## Trade Statistics
+| Stat | Value |
+|------|-------|
+| Winning Trades | ${winningTrades.length} |
+| Losing Trades | ${losingTrades.length} |
+| Open Trades | ${openTrades.length} |
+| Avg Win | ₹${avgWin.toFixed(2)} |
+| Avg Loss | ₹${avgLoss.toFixed(2)} |
+| Profit Factor | ${profitFactor.toFixed(2)} |
+| Expectancy / Trade | ₹${expectancy.toFixed(2)} |
+| Peak Equity | ₹${peakEquity.toFixed(2)} |
+| Trough Equity | ₹${troughEquity.toFixed(2)} |
+| Peak Drawdown | ${peakDD.toFixed(2)}% |
+
+## Per-Symbol Breakdown
+${breakdownTable}
+
+## All Trades
+${tradesTable}
+
+## Equity Curve (sampled)
+${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: any) => `- ${p.date}: ₹${p.value.toFixed(2)}`).join("\n")}
+
+## What I Want From You (LLM)
+1. Diagnose why the strategy underperforms / outperforms (look at per-symbol breakdown + trade frequency).
+2. Propose 3 concrete changes (entry filter, exit rule, sizing, etc.) with expected impact.
+3. Suggest parameter values to test next.
+4. Flag any look-ahead bias, overfitting, or unrealistic assumptions in the rules.
+5. Recommend a benchmark (e.g. buy-and-hold same symbols) to compare against.
+`;
+  };
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(buildReport());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      alert("Failed to copy report. Browser blocked clipboard access.");
+    }
+  };
 
   const runBacktest = async () => {
     setLoading(true);
@@ -31,16 +243,12 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
-      
       const result = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(result.detail || "Backtest failed");
-      }
-      
+      if (!res.ok) throw new Error(result.detail || "Backtest failed");
       setData(result);
+      setChartSymbol(config.symbols[0]);
+      setActiveTab("overview");
     } catch (err: any) {
-      console.error("Backtest failed", err);
       setError(err.message);
       setData(null);
     } finally {
@@ -48,267 +256,153 @@ export default function Dashboard() {
     }
   };
 
-  const MetricCard = ({ title, value, icon: Icon, color, suffix = "" }: any) => (
-    <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-slate-400 text-sm font-medium">{title}</span>
-        <div className={`p-2 rounded-lg bg-opacity-10 ${color.replace('text-', 'bg-')}`}>
-          <Icon className={`w-5 h-5 ${color}`} />
-        </div>
-      </div>
-      <div className="text-2xl font-bold">
-        {value}
-        <span className="text-sm font-normal ml-1">{suffix}</span>
-      </div>
-    </div>
-  );
+  const trades: Trade[] = data?.trades ?? [];
+  const breakdown: SymbolBreakdown[] = data?.metrics?.symbol_breakdown ?? [];
+
+  const filteredTrades = useMemo(() => {
+    let list = trades;
+    if (tradesFilter !== "ALL") list = list.filter((t) => t.symbol === tradesFilter);
+    if (tradesPnLFilter === "wins") list = list.filter((t) => t.profit_loss > 0);
+    else if (tradesPnLFilter === "losses") list = list.filter((t) => t.profit_loss < 0 && t.status.toLowerCase() !== "open");
+    else if (tradesPnLFilter === "open") list = list.filter((t) => t.status.toLowerCase() === "open");
+    return list;
+  }, [trades, tradesFilter, tradesPnLFilter]);
+
+  const equityCombinedData = useMemo(() => {
+    if (!data?.charts?.per_symbol_equity) return [];
+    const perSym = data.charts.per_symbol_equity as Record<string, { date: string; value: number }[]>;
+    const dates = new Set<string>();
+    Object.values(perSym).forEach((arr) => arr.forEach((p) => dates.add(p.date)));
+    const sortedDates = Array.from(dates).sort();
+    return sortedDates.map((date) => {
+      const row: any = { date };
+      Object.entries(perSym).forEach(([sym, arr]) => {
+        const point = arr.find((p) => p.date === date);
+        if (point) row[sym] = point.value;
+      });
+      return row;
+    });
+  }, [data]);
+
+  const chartCandles = chartSymbol && data?.charts?.per_symbol_candles?.[chartSymbol]
+    ? data.charts.per_symbol_candles[chartSymbol]
+    : data?.charts?.candlesticks ?? [];
+  const chartMarkers = chartSymbol && data?.charts?.per_symbol_markers?.[chartSymbol]
+    ? data.charts.per_symbol_markers[chartSymbol]
+    : data?.charts?.markers ?? [];
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header & Controls */}
-      <div className="bg-card border border-border p-6 rounded-2xl space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">VectorBT Pro</h1>
-            <p className="text-slate-400">Indian Market Quantitative Backtesting</p>
+    <div className="space-y-6 pb-12 animate-fade-in">
+      {/* Header */}
+      <header className="bg-card/80 glass border border-border rounded-2xl overflow-hidden">
+        <div className="p-6 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/30">
+              <Sparkles className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">VectorBT Pro</h1>
+              <p className="text-muted-foreground text-sm">Indian market quantitative backtesting</p>
+            </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={runBacktest}
               disabled={loading}
-              className="flex items-center gap-2 bg-primary hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold transition-all disabled:opacity-50"
+              className="flex items-center gap-2 bg-primary hover:shadow-glow text-primary-foreground px-6 py-2.5 rounded-lg font-semibold transition-all disabled:opacity-50"
             >
               {loading ? <Activity className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               {loading ? "Running..." : "Run Backtest"}
             </button>
-
-            <button className="p-2 border border-border rounded-lg hover:bg-slate-800 transition-colors">
-              <Download className="w-5 h-5" />
+            <button
+              onClick={copyReport}
+              disabled={!data}
+              title="Copy full backtest report (markdown) to clipboard — paste into ChatGPT / Claude for strategy improvement suggestions"
+              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+                copied
+                  ? "bg-success/10 border-success/40 text-success"
+                  : "border-border hover:bg-muted text-foreground"
+              }`}
+            >
+              {copied ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
+              {copied ? "Copied!" : "Copy Report"}
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-400 flex items-center gap-1.5">
-              <Settings className="w-3.5 h-3.5" /> Strategy
-            </label>
+        {/* Configuration row */}
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <FieldWrapper icon={<Settings className="w-3.5 h-3.5" />} label="Strategy">
             <select
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary cursor-pointer"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary cursor-pointer w-full"
               value={config.strategy_name}
               onChange={(e) => setConfig({ ...config, strategy_name: e.target.value })}
             >
-              <option value="sma_crossover">SMA Crossover</option>
+              {strategies.length === 0 && <option value="sma_rsi">SMA + RSI</option>}
+              {strategies.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
             </select>
-          </div>
+          </FieldWrapper>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-400 flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5" /> Symbols (comma-separated)
-            </label>
+          <FieldWrapper icon={<Tag className="w-3.5 h-3.5" />} label="Symbols">
             <input
               type="text"
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
               value={config.symbols.join(", ")}
               onChange={(e) =>
                 setConfig({
                   ...config,
-                  symbols: e.target.value
-                    .split(",")
-                    .map((s) => s.trim().toUpperCase())
-                    .filter(Boolean),
+                  symbols: e.target.value.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
                 })
               }
               placeholder="RELIANCE, TCS, INFY"
             />
-          </div>
+          </FieldWrapper>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-400 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5" /> Start Date
-            </label>
+          <FieldWrapper icon={<Calendar className="w-3.5 h-3.5" />} label="Start Date">
             <input
               type="date"
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
               value={config.start_date}
               max={config.end_date}
               onChange={(e) => setConfig({ ...config, start_date: e.target.value })}
             />
-          </div>
+          </FieldWrapper>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-400 flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5" /> End Date
-            </label>
+          <FieldWrapper icon={<Calendar className="w-3.5 h-3.5" />} label="End Date">
             <input
               type="date"
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
               value={config.end_date}
               min={config.start_date}
               max={new Date().toISOString().split("T")[0]}
               onChange={(e) => setConfig({ ...config, end_date: e.target.value })}
             />
-          </div>
+          </FieldWrapper>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-slate-400 flex items-center gap-1.5">
-              <Coins className="w-3.5 h-3.5" /> Initial Capital (₹)
-            </label>
+          <FieldWrapper icon={<Coins className="w-3.5 h-3.5" />} label="Initial Capital (₹)">
             <input
               type="number"
               min={1000}
               step={1000}
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
               value={config.initial_capital}
-              onChange={(e) =>
-                setConfig({ ...config, initial_capital: Number(e.target.value) || 0 })
-              }
+              onChange={(e) => setConfig({ ...config, initial_capital: Number(e.target.value) || 0 })}
             />
-          </div>
+          </FieldWrapper>
         </div>
-      </div>
 
-      {data && (
-        <>
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard 
-              title="Net Profit/Loss" 
-              value={`₹${data.metrics.net_profit.toLocaleString(undefined, {maximumFractionDigits: 0})}`} 
-              icon={Wallet} 
-              color={data.metrics.net_profit >= 0 ? "text-success" : "text-danger"} 
-            />
-            <MetricCard 
-              title="Total Return" 
-              value={data.metrics.total_return.toFixed(2)} 
-              suffix="%" 
-              icon={TrendingUp} 
-              color="text-primary" 
-            />
-            <MetricCard 
-              title="Win Rate" 
-              value={data.metrics.win_rate.toFixed(1)} 
-              suffix="%" 
-              icon={PieChart} 
-              color="text-success" 
-            />
-            <MetricCard 
-              title="Max Drawdown" 
-              value={data.metrics.max_drawdown.toFixed(2)} 
-              suffix="%" 
-              icon={TrendingDown} 
-              color="text-danger" 
-            />
+        {currentStrategy && (
+          <div className="px-6 pb-5 -mt-2">
+            <p className="text-xs text-muted-foreground italic">{currentStrategy.description}</p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <div className="bg-card border border-border p-4 rounded-xl">
-               <span className="text-slate-400 text-sm">Sharpe Ratio</span>
-               <div className="text-xl font-bold">{data.metrics.sharpe_ratio.toFixed(2)}</div>
-            </div>
-            <div className="bg-card border border-border p-4 rounded-xl">
-               <span className="text-slate-400 text-sm">Total Trades</span>
-               <div className="text-xl font-bold">{data.metrics.total_trades}</div>
-            </div>
-            <div className="bg-card border border-border p-4 rounded-xl">
-               <span className="text-slate-400 text-sm">Brokerage Paid</span>
-               <div className="text-xl font-bold text-danger">₹{data.metrics.fees_paid.toLocaleString()}</div>
-            </div>
-            <div className="bg-card border border-border p-4 rounded-xl">
-               <span className="text-slate-400 text-sm">Current Capital</span>
-               <div className="text-xl font-bold text-success">₹{data.metrics.final_value.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
-            </div>
-          </div>
-
-          {/* Main Chart Area */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2 space-y-6">
-              <div className="bg-card border border-border p-6 rounded-2xl">
-                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-primary" />
-                  Strategy Execution (Primary Stock)
-                </h3>
-                <TradingChart data={data.charts.candlesticks} markers={data.charts.markers} />
-              </div>
-
-              <div className="bg-card border border-border p-6 rounded-2xl">
-                <h3 className="text-lg font-bold mb-6">Equity Curve</h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data.charts.equity_curve}>
-                      <defs>
-                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                      <XAxis dataKey="date" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val/1000}k`} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
-                        labelStyle={{ color: "#94a3b8" }}
-                      />
-                      <Area type="monotone" dataKey="value" stroke="#3b82f6" fillOpacity={1} fill="url(#colorValue)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-
-            {/* Side Panel: Trades & Drawdown */}
-            <div className="space-y-6">
-              <div className="bg-card border border-border p-6 rounded-2xl">
-                <h3 className="text-lg font-bold mb-6">Drawdown Profile</h3>
-                <div className="h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data.charts.drawdown}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                      <XAxis dataKey="date" hide />
-                      <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
-                      />
-                      <Area type="monotone" dataKey="value" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="bg-card border border-border p-4 rounded-2xl max-h-[500px] overflow-hidden flex flex-col">
-                <h3 className="text-lg font-bold mb-4 px-2">Recent Trades</h3>
-                <div className="overflow-y-auto flex-1 custom-scrollbar">
-                  <table className="w-full text-sm text-left">
-                    <thead className="text-slate-400 sticky top-0 bg-card">
-                      <tr>
-                        <th className="pb-2">Stock</th>
-                        <th className="pb-2">P&L</th>
-                        <th className="pb-2">Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {data.trades.slice().reverse().map((trade: any, i: number) => (
-                        <tr key={i} className="group hover:bg-slate-800/50 transition-colors">
-                          <td className="py-3 font-medium">{trade.symbol}</td>
-                          <td className={`py-3 ${trade.profit_loss >= 0 ? "text-success" : "text-danger"}`}>
-                            {trade.profit_loss >= 0 ? "+" : ""}₹{trade.profit_loss.toFixed(2)}
-                          </td>
-                          <td className="py-3 text-slate-400">{trade.quantity.toFixed(0)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+        )}
+      </header>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-xl text-red-500 flex items-center gap-3">
-          <Activity className="w-5 h-5" />
+        <div className="bg-danger/10 border border-danger/40 p-4 rounded-xl text-danger flex items-center gap-3 animate-slide-up">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <div>
             <p className="font-bold">Backtest Error</p>
             <p className="text-sm opacity-90">{error}</p>
@@ -318,11 +412,351 @@ export default function Dashboard() {
 
       {!data && !loading && !error && (
         <div className="flex flex-col items-center justify-center py-32 bg-card border border-border rounded-3xl border-dashed">
-          <BarChart3 className="w-16 h-16 text-slate-700 mb-4" />
+          <BarChart3 className="w-16 h-16 text-muted-foreground/30 mb-4" />
           <h2 className="text-xl font-semibold">No Backtest Data</h2>
-          <p className="text-slate-400">Configure your parameters and click "Run Backtest" to see results</p>
+          <p className="text-muted-foreground">Configure your parameters and click "Run Backtest"</p>
         </div>
       )}
+
+      {data && (
+        <div className="space-y-6 animate-slide-up">
+          {/* Hero stats */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <HeroCard
+              title="Net P&L"
+              value={fmtCurrency(data.metrics.net_profit, 0)}
+              icon={Wallet}
+              tone={data.metrics.net_profit >= 0 ? "success" : "danger"}
+              hint={`${data.metrics.total_return >= 0 ? "+" : ""}${fmtPct(data.metrics.total_return)} return`}
+            />
+            <HeroCard
+              title="Final Capital"
+              value={fmtCurrency(data.metrics.final_value, 0)}
+              icon={CircleDollarSign}
+              tone="primary"
+              hint={`from ${fmtCurrency(data.metrics.initial_capital ?? config.initial_capital, 0)}`}
+            />
+            <HeroCard
+              title="Win Rate"
+              value={fmtPct(data.metrics.win_rate, 1)}
+              icon={Target}
+              tone="success"
+              hint={`${data.metrics.total_trades} trades`}
+            />
+            <HeroCard
+              title="Max Drawdown"
+              value={fmtPct(data.metrics.max_drawdown)}
+              icon={TrendingDown}
+              tone="danger"
+              hint={`Sharpe ${(data.metrics.sharpe_ratio ?? 0).toFixed(2)}`}
+            />
+          </div>
+
+          {/* Sub stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MiniStat label="Sharpe Ratio" value={(data.metrics.sharpe_ratio ?? 0).toFixed(2)} icon={Activity} />
+            <MiniStat label="Total Trades" value={data.metrics.total_trades} icon={ListOrdered} />
+            <MiniStat label="Brokerage Paid" value={fmtCurrency(data.metrics.fees_paid, 2)} icon={Percent} tone="danger" />
+            <MiniStat label="Symbols Traded" value={breakdown.length} icon={LayoutGrid} />
+          </div>
+
+          {/* Tabs */}
+          <div className="border-b border-border flex gap-1">
+            {([
+              { id: "overview", label: "Overview", icon: BarChart3 },
+              { id: "symbols", label: "Per Symbol", icon: LayoutGrid },
+              { id: "trades", label: `All Trades (${trades.length})`, icon: ListOrdered },
+            ] as const).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                  activeTab === tab.id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === "overview" && (
+            <div className="space-y-6">
+              {/* Trading chart with symbol selector */}
+              <div className="bg-card border border-border p-6 rounded-2xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-primary" />
+                    Strategy Execution
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {config.symbols.map((sym) => (
+                      <button
+                        key={sym}
+                        onClick={() => setChartSymbol(sym)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                          chartSymbol === sym
+                            ? "bg-primary text-primary-foreground border-primary shadow-glow"
+                            : "bg-background border-border text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {sym}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <TradingChart data={chartCandles} markers={chartMarkers} />
+              </div>
+
+              {/* Combined equity curve (per-symbol) */}
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2 bg-card border border-border p-6 rounded-2xl">
+                  <h3 className="text-lg font-bold mb-4">Equity Curve · Per Symbol</h3>
+                  <div className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={equityCombinedData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} minTickGap={40} />
+                        <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
+                          labelStyle={{ color: "#94a3b8" }}
+                          formatter={(v: number) => fmtCurrency(v, 0)}
+                        />
+                        <Legend wrapperStyle={{ paddingTop: "10px" }} />
+                        {Object.keys(data.charts.per_symbol_equity || {}).map((sym, i) => (
+                          <Line
+                            key={sym}
+                            type="monotone"
+                            dataKey={sym}
+                            stroke={PALETTE[i % PALETTE.length]}
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="bg-card border border-border p-6 rounded-2xl">
+                  <h3 className="text-lg font-bold mb-4">Drawdown Profile</h3>
+                  <div className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.charts.drawdown}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} minTickGap={40} />
+                        <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
+                          formatter={(v: number) => `${v.toFixed(2)}%`}
+                        />
+                        <Area type="monotone" dataKey="value" stroke="#ef4444" fill="#ef4444" fillOpacity={0.15} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "symbols" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {breakdown.map((b, i) => (
+                  <SymbolCard key={b.symbol} breakdown={b} accent={PALETTE[i % PALETTE.length]} />
+                ))}
+              </div>
+              {breakdown.length === 0 && (
+                <p className="text-center text-muted-foreground py-12">No trades executed for any symbol.</p>
+              )}
+            </div>
+          )}
+
+          {activeTab === "trades" && (
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h3 className="text-lg font-bold">All Trades · {filteredTrades.length}</h3>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                    value={tradesFilter}
+                    onChange={(e) => setTradesFilter(e.target.value)}
+                  >
+                    <option value="ALL">All symbols</option>
+                    {Array.from(new Set(trades.map((t) => t.symbol))).map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <div className="flex bg-background border border-border rounded-lg overflow-hidden">
+                    {(["all", "wins", "losses", "open"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setTradesPnLFilter(f)}
+                        className={`px-3 py-1.5 text-xs font-medium capitalize transition-all ${
+                          tradesPnLFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-sm">
+                  <thead className="bg-background/40">
+                    <tr className="text-left text-muted-foreground border-b border-border">
+                      <th className="py-3 px-4 font-medium">#</th>
+                      <th className="py-3 px-4 font-medium">Symbol</th>
+                      <th className="py-3 px-4 font-medium">Entry Date</th>
+                      <th className="py-3 px-4 font-medium">Exit Date</th>
+                      <th className="py-3 px-4 font-medium text-right">Entry ₹</th>
+                      <th className="py-3 px-4 font-medium text-right">Exit ₹</th>
+                      <th className="py-3 px-4 font-medium text-right">Qty</th>
+                      <th className="py-3 px-4 font-medium text-right">Trade Amount</th>
+                      <th className="py-3 px-4 font-medium text-right">P&L</th>
+                      <th className="py-3 px-4 font-medium text-right">Return</th>
+                      <th className="py-3 px-4 font-medium text-right">Fees</th>
+                      <th className="py-3 px-4 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTrades.map((t, i) => {
+                      const isOpen = t.status.toLowerCase() === "open";
+                      const profitable = t.profit_loss >= 0;
+                      return (
+                        <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-4 text-muted-foreground">{i + 1}</td>
+                          <td className="py-3 px-4 font-semibold">{t.symbol}</td>
+                          <td className="py-3 px-4 text-muted-foreground">{t.entry_date ?? "—"}</td>
+                          <td className="py-3 px-4 text-muted-foreground">{t.exit_date ?? "—"}</td>
+                          <td className="py-3 px-4 text-right">{t.entry_price !== null ? t.entry_price.toFixed(2) : "—"}</td>
+                          <td className="py-3 px-4 text-right">{t.exit_price !== null ? t.exit_price.toFixed(2) : "—"}</td>
+                          <td className="py-3 px-4 text-right">{t.quantity.toFixed(2)}</td>
+                          <td className="py-3 px-4 text-right font-medium">{fmtCurrency(t.trade_amount, 2)}</td>
+                          <td className={`py-3 px-4 text-right font-semibold ${profitable ? "text-success" : "text-danger"}`}>
+                            {profitable ? "+" : ""}{fmtCurrency(t.profit_loss, 2)}
+                          </td>
+                          <td className={`py-3 px-4 text-right ${profitable ? "text-success" : "text-danger"}`}>
+                            <span className="inline-flex items-center gap-1">
+                              {profitable ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                              {fmtPct(t.return_pct, 2)}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right text-muted-foreground">{fmtCurrency(t.fees, 2)}</td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              isOpen
+                                ? "bg-warning/20 text-warning"
+                                : profitable
+                                ? "bg-success/20 text-success"
+                                : "bg-danger/20 text-danger"
+                            }`}>
+                              {isOpen ? "Open" : profitable ? "Win" : "Loss"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {filteredTrades.length === 0 && (
+                  <p className="text-center text-muted-foreground py-12">No trades match the filter.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FieldWrapper({ icon, label, children }: { icon?: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium uppercase tracking-wide">
+        {icon}
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function HeroCard({
+  title, value, icon: Icon, tone, hint,
+}: { title: string; value: string; icon: any; tone: "success" | "danger" | "primary" | "warning"; hint?: string }) {
+  const toneMap = {
+    success: { bg: "bg-success/10", text: "text-success", border: "border-success/20" },
+    danger: { bg: "bg-danger/10", text: "text-danger", border: "border-danger/20" },
+    primary: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20" },
+    warning: { bg: "bg-warning/10", text: "text-warning", border: "border-warning/20" },
+  }[tone];
+
+  return (
+    <div className={`bg-card border ${toneMap.border} p-5 rounded-2xl relative overflow-hidden`}>
+      <div className="absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-10 blur-2xl" style={{ backgroundColor: "currentColor" }} />
+      <div className="flex items-start justify-between mb-3 relative">
+        <span className="text-muted-foreground text-sm font-medium">{title}</span>
+        <div className={`p-2 rounded-lg ${toneMap.bg}`}>
+          <Icon className={`w-4 h-4 ${toneMap.text}`} />
+        </div>
+      </div>
+      <div className="text-2xl font-bold tracking-tight">{value}</div>
+      {hint && <div className="text-xs text-muted-foreground mt-1">{hint}</div>}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: any; tone?: string }) {
+  return (
+    <div className="bg-card border border-border p-4 rounded-xl flex items-center gap-3">
+      <div className="p-2 rounded-lg bg-muted">
+        <Icon className={`w-4 h-4 ${tone === "danger" ? "text-danger" : "text-muted-foreground"}`} />
+      </div>
+      <div>
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="text-lg font-bold">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function SymbolCard({ breakdown: b, accent }: { breakdown: SymbolBreakdown; accent: string }) {
+  const profitable = b.total_pnl >= 0;
+  return (
+    <div className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-all relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: accent }} />
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-lg font-bold">{b.symbol}</h4>
+        <div className={`text-xl font-bold ${profitable ? "text-success" : "text-danger"}`}>
+          {profitable ? "+" : ""}{fmtCurrency(b.total_pnl, 0)}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <Stat label="Trades" value={b.total_trades} />
+        <Stat label="Win Rate" value={fmtPct(b.win_rate, 1)} tone={b.win_rate >= 50 ? "success" : "danger"} />
+        <Stat label="Wins / Losses" value={`${b.winning_trades} / ${b.losing_trades}`} />
+        <Stat label="Open" value={b.open_trades} />
+        <Stat label="Best" value={fmtCurrency(b.best_trade, 0)} tone="success" />
+        <Stat label="Worst" value={fmtCurrency(b.worst_trade, 0)} tone="danger" />
+        <Stat label="Avg P&L / Trade" value={fmtCurrency(b.avg_pnl_per_trade, 0)} />
+        <Stat label="Fees Paid" value={fmtCurrency(b.fees_paid, 0)} />
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "success" | "danger" }) {
+  const toneClass = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "";
+  return (
+    <div className="space-y-0.5">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`font-semibold ${toneClass}`}>{value}</div>
     </div>
   );
 }
