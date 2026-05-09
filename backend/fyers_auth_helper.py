@@ -1,15 +1,20 @@
 import os
+from pathlib import Path
 from fyers_apiv3 import fyersModel
 from dotenv import load_dotenv, set_key
 import webbrowser
 
+# Ensure .env is loaded from the backend directory (where this script lives)
+BASE_DIR = Path(__file__).resolve().parent
+ENV_PATH = BASE_DIR / ".env"
+load_dotenv(dotenv_path=ENV_PATH)
+
+
 def generate_access_token():
-    load_dotenv()
-    
     client_id = os.getenv("FYERS_APP_ID")
     secret_key = os.getenv("FYERS_SECRET_KEY")
     redirect_uri = os.getenv("FYERS_REDIRECT_URI")
-    
+
     if not client_id or client_id == "your_app_id":
         client_id = input("Enter your Fyers Client ID (App ID): ").strip()
     if not secret_key or secret_key == "your_secret_key":
@@ -50,13 +55,12 @@ def generate_access_token():
         print("\nSUCCESS! Access Token generated.")
         print(f"Token: {access_token}")
         
-        # Optionally update .env
-        env_path = ".env"
-        set_key(env_path, "FYERS_APP_ID", client_id)
-        set_key(env_path, "FYERS_SECRET_KEY", secret_key)
-        set_key(env_path, "FYERS_REDIRECT_URI", redirect_uri)
-        set_key(env_path, "FYERS_ACCESS_TOKEN", access_token)
-        print(f"\nUpdated {env_path} with new credentials.")
+        # Optionally update .env in backend directory
+        set_key(str(ENV_PATH), "FYERS_APP_ID", client_id)
+        set_key(str(ENV_PATH), "FYERS_SECRET_KEY", secret_key)
+        set_key(str(ENV_PATH), "FYERS_REDIRECT_URI", redirect_uri)
+        set_key(str(ENV_PATH), "FYERS_ACCESS_TOKEN", access_token)
+        print(f"\nUpdated {ENV_PATH} with new credentials.")
     else:
         print(f"\nFAILED to generate access token: {response}")
 
