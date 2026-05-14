@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from backend.models import BacktestRequest, BacktestResponse
 from backend.fyers_client import DataFetcher
-from backend.engine import BacktestEngine
+from backend.engine import BacktestEngine, _extract_symbol
 import pandas as pd
 import sys
 import os
@@ -131,28 +131,62 @@ async def run_backtest(request: BacktestRequest):
         charts["candlesticks"] = per_symbol_candles.get(primary_sym, [])
         charts["per_symbol_candles"] = per_symbol_candles
 
-        # Build per-symbol markers
+        # Build per-symbol markers from ORDERS (not trades).
+        # With accumulate=True, portfolio.trades groups all pyramid legs into ONE record
+        # with the first entry's timestamp, causing all buy arrows to cluster on the same
+        # date. portfolio.orders has one row per actual fill with its real timestamp.
         per_symbol_markers = {sym: [] for sym in request.symbols}
-        for t in trades:
-            sym = t["symbol"]
-            if sym not in per_symbol_markers:
-                continue
-            if t["entry_date"]:
-                per_symbol_markers[sym].append({
-                    "time": t["entry_date"],
-                    "position": "belowBar",
-                    "color": "#22c55e",
-                    "shape": "arrowUp",
-                    "text": f"Buy @ {t['entry_price']:.2f}" if t["entry_price"] is not None else "Buy",
-                })
-            if t["exit_date"] and t["exit_price"] is not None:
-                per_symbol_markers[sym].append({
-                    "time": t["exit_date"],
-                    "position": "aboveBar",
-                    "color": "#ef4444",
-                    "shape": "arrowDown",
-                    "text": f"Sell @ {t['exit_price']:.2f}",
-                })
+        try:
+            orders_df = portfolio.orders.records_readable
+            # orders_df columns: Timestamp, Column, Side, Price, Size, Fees
+            for _, row in orders_df.iterrows():
+                sym = _extract_symbol(row.get("Column"), request.symbols)
+                if sym not in per_symbol_markers:
+                    continue
+                ts = row.get("Timestamp")
+                price = row.get("Price")
+                side = str(row.get("Side", "")).lower()
+                if pd.isnull(ts) or pd.isnull(price):
+                    continue
+                date_str = ts.strftime("%Y-%m-%d")
+                if side == "buy":
+                    per_symbol_markers[sym].append({
+                        "time": date_str,
+                        "position": "belowBar",
+                        "color": "#22c55e",
+                        "shape": "arrowUp",
+                        "text": f"Buy @ {float(price):.2f}",
+                    })
+                elif side == "sell":
+                    per_symbol_markers[sym].append({
+                        "time": date_str,
+                        "position": "aboveBar",
+                        "color": "#ef4444",
+                        "shape": "arrowDown",
+                        "text": f"Sell @ {float(price):.2f}",
+                    })
+        except Exception:
+            # Fallback: use trade records (old behaviour) if orders API unavailable
+            for t in trades:
+                sym = t["symbol"]
+                if sym not in per_symbol_markers:
+                    continue
+                if t["entry_date"]:
+                    per_symbol_markers[sym].append({
+                        "time": t["entry_date"],
+                        "position": "belowBar",
+                        "color": "#22c55e",
+                        "shape": "arrowUp",
+                        "text": f"Buy @ {t['entry_price']:.2f}" if t["entry_price"] is not None else "Buy",
+                    })
+                if t["exit_date"] and t["exit_price"] is not None:
+                    per_symbol_markers[sym].append({
+                        "time": t["exit_date"],
+                        "position": "aboveBar",
+                        "color": "#ef4444",
+                        "shape": "arrowDown",
+                        "text": f"Sell @ {t['exit_price']:.2f}",
+                    })
 
         # Sort markers chronologically (lightweight-charts requires sorted markers)
         for sym in per_symbol_markers:

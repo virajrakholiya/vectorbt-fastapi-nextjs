@@ -72,47 +72,74 @@ class IntradayScalperStrategy(BaseStrategy):
         max_hold: int,
         profit_target: float,
         stop_loss: float,
+        max_pyramid: int = 2,     # FIX: cap pyramid depth to avoid buy clusters
     ) -> pd.Series:
-        """Generate exits based on profit target, trailing stop, or max hold time."""
-        exits = pd.Series(False, index=prices.index)
+        """
+        Generate exits based on profit target, trailing stop, or max hold time.
 
-        in_pos = False
-        avg_entry = 0.0
-        units = 0
-        bars_held = 0
-        peak = 0.0
+        Fixes applied vs original:
+          - Exit fires on next bar (pending_exit), not same bar (removes look-ahead).
+          - Re-entry blocked on the bar exit fires AND the bar condition is triggered.
+          - Pyramid depth capped at max_pyramid (was unlimited, causing buy clusters).
+          - 2-bar cooldown after exit before accepting new entries.
+        """
+        exits        = pd.Series(False, index=prices.index)
+        in_pos       = False
+        avg_entry    = 0.0
+        units        = 0
+        bars_held    = 0
+        peak         = 0.0
+        pending_exit = False   # exit fires on next bar
+        cooldown     = 0       # bars before new entries allowed after exit
 
         for i in range(len(prices)):
             price = prices.iloc[i]
 
-            if entries.iloc[i]:
-                if not in_pos:
-                    in_pos = True
-                    avg_entry = price
-                    units = 1
-                    peak = price
-                    bars_held = 0
-                else:
-                    avg_entry = (avg_entry * units + price) / (units + 1)
-                    units += 1
-
-            if not in_pos:
-                continue
-
-            bars_held += 1
-            if price > peak:
-                peak = price
-
-            hit_target = (price - avg_entry) / avg_entry >= profit_target
-            hit_stop = (price - peak) / peak <= -stop_loss
-            timed_out = bars_held >= max_hold
-
-            if hit_target or hit_stop or timed_out:
-                exits.iloc[i] = True
-                in_pos = False
-                units = 0
+            # ---- FIX 1: apply pending exit, skip entry on this bar ----
+            if pending_exit:
+                if i > 0:
+                    exits.iloc[i] = True
+                pending_exit = False
+                in_pos    = False
+                units     = 0
                 avg_entry = 0.0
-                peak = 0.0
+                peak      = 0.0
                 bars_held = 0
+                cooldown  = 2   # no re-entry for 2 bars
+                continue        # skip entry check on exit bar
+
+            # ---- decrement cooldown ----
+            if cooldown > 0:
+                cooldown -= 1
+
+            # ---- check exit conditions BEFORE processing new entry ----
+            if in_pos:
+                bars_held += 1
+                if price > peak:
+                    peak = price
+
+                hit_target = (price - avg_entry) / avg_entry >= profit_target
+                hit_stop   = (price - peak) / peak <= -stop_loss
+                timed_out  = bars_held >= max_hold
+
+                if hit_target or hit_stop or timed_out:
+                    pending_exit = True   # FIX 2: exit next bar
+                    continue              # FIX 3: skip new entry on trigger bar
+
+            # ---- new entry — only if not in cooldown, not pending exit ----
+            if (
+                bool(entries.iloc[i])
+                and not pending_exit     # FIX 4: never enter while exit is waiting
+                and cooldown == 0
+            ):
+                if not in_pos:
+                    in_pos    = True
+                    avg_entry = price
+                    units     = 1
+                    peak      = price
+                    bars_held = 0
+                elif units < max_pyramid:     # FIX 5: cap pyramid depth
+                    avg_entry = (avg_entry * units + price) / (units + 1)
+                    units    += 1
 
         return exits
