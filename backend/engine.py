@@ -129,7 +129,7 @@ class BacktestEngine:
                 sym = _extract_symbol(col, symbols)
                 series = per_asset_values[col]
                 per_symbol_equity[sym] = [
-                    {"date": idx.strftime("%Y-%m-%d"), "value": float(v)}
+                    {"date": idx.strftime("%Y-%m-%d %H:%M"), "value": float(v)}
                     for idx, v in series.items()
                 ]
 
@@ -139,11 +139,11 @@ class BacktestEngine:
             total_drawdown = total_drawdown.mean(axis=1)
 
         equity_curve = [
-            {"date": idx.strftime("%Y-%m-%d"), "value": float(val)}
+            {"date": idx.strftime("%Y-%m-%d %H:%M"), "value": float(val)}
             for idx, val in total_values.items()
         ]
         drawdown_series = [
-            {"date": idx.strftime("%Y-%m-%d"), "value": float(val) * 100}
+            {"date": idx.strftime("%Y-%m-%d %H:%M"), "value": float(val) * 100}
             for idx, val in total_drawdown.items()
         ]
 
@@ -176,8 +176,8 @@ class BacktestEngine:
 
             trades_list.append({
                 "symbol": symbol,
-                "entry_date": row["Entry Timestamp"].strftime("%Y-%m-%d") if pd.notnull(row.get("Entry Timestamp")) else None,
-                "exit_date": row["Exit Timestamp"].strftime("%Y-%m-%d") if pd.notnull(row.get("Exit Timestamp")) else None,
+                "entry_date": int(row["Entry Timestamp"].timestamp()) if pd.notnull(row.get("Entry Timestamp")) else None,
+                "exit_date": int(row["Exit Timestamp"].timestamp()) if pd.notnull(row.get("Exit Timestamp")) else None,
                 "entry_price": entry_price_val,
                 "exit_price": exit_price_val,
                 "quantity": qty,

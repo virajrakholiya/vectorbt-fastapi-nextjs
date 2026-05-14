@@ -120,7 +120,7 @@ async def run_backtest(request: BacktestRequest):
             candles = []
             for date, row in sym_df.iterrows():
                 candles.append({
-                    "time": date.strftime("%Y-%m-%d"),
+                    "time": int(date.timestamp()),
                     "open": float(row["open"]),
                     "high": float(row["high"]),
                     "low": float(row["low"]),
