@@ -85,6 +85,8 @@ export default function Dashboard() {
     end_date: "2023-12-31",
     initial_capital: 50000,
     params: {} as Record<string, number>,
+    intraday_mode: false,
+    leverage: 1,
   });
 
   useEffect(() => {
@@ -390,6 +392,42 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
               value={config.initial_capital}
               onChange={(e) => setConfig({ ...config, initial_capital: Number(e.target.value) || 0 })}
             />
+          </FieldWrapper>
+
+          <FieldWrapper icon={<Activity className="w-3.5 h-3.5" />} label="Trade Settings">
+            <div className="flex flex-col gap-2">
+              {/* Intraday Mode toggle */}
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded accent-primary cursor-pointer"
+                  checked={config.intraday_mode}
+                  onChange={(e) => setConfig({ ...config, intraday_mode: e.target.checked })}
+                />
+                <span className="text-sm text-foreground">Intraday Mode</span>
+              </label>
+
+              {/* Leverage slider — only visible when intraday_mode is on */}
+              {config.intraday_mode && (
+                <div className="flex flex-col gap-1 pt-1">
+                  <span className="text-sm text-foreground">
+                    Leverage: {config.leverage}x
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    step={0.5}
+                    value={config.leverage}
+                    className="w-full accent-primary cursor-pointer"
+                    onChange={(e) => setConfig({ ...config, leverage: Number(e.target.value) })}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    ₹20 entry + ₹20 exit per trade
+                  </span>
+                </div>
+              )}
+            </div>
           </FieldWrapper>
         </div>
 

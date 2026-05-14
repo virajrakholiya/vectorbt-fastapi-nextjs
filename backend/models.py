@@ -9,6 +9,8 @@ class BacktestRequest(BaseModel):
     end_date: str = "2023-12-31"
     initial_capital: float = 50000.0
     params: Dict[str, Any] = {}
+    intraday_mode: bool = False
+    leverage: float = 1.0
 
 class BacktestResponse(BaseModel):
     metrics: Dict[str, Any]

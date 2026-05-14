@@ -36,11 +36,15 @@ class BacktestEngine:
         initial_capital: float = 50000.0,
         fees: float = 0.001,
         slippage: float = 0.0005,
+        intraday_mode: bool = False,
+        leverage: float = 1.0,
     ):
         self.data = data
         self.initial_capital = initial_capital
         self.fees = fees
         self.slippage = slippage
+        self.intraday_mode = intraday_mode
+        self.leverage = leverage
 
     def run(
         self,
@@ -60,20 +64,38 @@ class BacktestEngine:
 
         is_multi_symbol = isinstance(close_prices, pd.DataFrame) and close_prices.shape[1] > 1
 
-        portfolio = vbt.Portfolio.from_signals(
-            close=close_prices,
-            entries=entries,
-            exits=exits,
-            init_cash=self.initial_capital,
-            fees=self.fees,
-            slippage=self.slippage,
-            size=size,
-            size_type="percent",
-            freq="D",
-            group_by=True if is_multi_symbol else None,
-            cash_sharing=True if is_multi_symbol else False,
-            accumulate=accumulate,
-        )
+        if self.intraday_mode:
+            effective_size = size * self.leverage
+            portfolio = vbt.Portfolio.from_signals(
+                close=close_prices,
+                entries=entries,
+                exits=exits,
+                init_cash=self.initial_capital,
+                fees=0.0,
+                fixed_fees=20.0,
+                slippage=self.slippage,
+                size=effective_size,
+                size_type="percent",
+                freq="D",
+                group_by=True if is_multi_symbol else None,
+                cash_sharing=True if is_multi_symbol else False,
+                accumulate=accumulate,
+            )
+        else:
+            portfolio = vbt.Portfolio.from_signals(
+                close=close_prices,
+                entries=entries,
+                exits=exits,
+                init_cash=self.initial_capital,
+                fees=self.fees,
+                slippage=self.slippage,
+                size=size,
+                size_type="percent",
+                freq="D",
+                group_by=True if is_multi_symbol else None,
+                cash_sharing=True if is_multi_symbol else False,
+                accumulate=accumulate,
+            )
 
         return portfolio
 

@@ -91,6 +91,8 @@ async def run_backtest(request: BacktestRequest):
             initial_capital=request.initial_capital,
             fees=0.001,
             slippage=0.0005,
+            intraday_mode=request.intraday_mode,
+            leverage=request.leverage,
         )
 
         portfolio = engine.run(
