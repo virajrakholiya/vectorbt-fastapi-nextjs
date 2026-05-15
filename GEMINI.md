@@ -24,9 +24,9 @@ The project defines several trading strategies in the `strategies/` directory. T
 
 ### Backend (FastAPI)
 - **Directory:** `backend/`
-- **Virtual Env:** `backend/venv/`
-- **Command:** `uvicorn backend.main:app --reload` (run from root)
-- **Authentication:** Run `backend/fyers_auth_helper.py` to generate `FYERS_ACCESS_TOKEN`.
+- **Environment:** Managed by `uv` (run `uv sync` to initialize)
+- **Command:** `uv run uvicorn backend.main:app --reload` (run from root)
+- **Authentication:** Run `uv run backend/fyers_auth_helper.py` to generate `FYERS_ACCESS_TOKEN`.
 
 ### Frontend (Next.js)
 - **Directory:** `frontend/`

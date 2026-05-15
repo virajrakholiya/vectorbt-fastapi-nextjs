@@ -1,0 +1,20 @@
+[project]
+name = "vectorbt-project"
+version = "0.1.0"
+description = "VectorBT Trading App"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "vectorbt",
+    "pandas",
+    "numpy",
+    "yfinance",
+    "fyers-apiv3",
+    "pydantic",
+    "python-dotenv",
+]
+
+[tool.uv]
+managed = true
