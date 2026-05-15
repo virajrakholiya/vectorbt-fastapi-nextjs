@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Legend,
@@ -749,15 +750,34 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
 function SymbolMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  const handleOpen = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+    setOpen((o) => !o);
+  };
 
   const toggle = (sym: string) => {
     onChange(value.includes(sym) ? value.filter((s) => s !== sym) : [...value, sym]);
@@ -765,11 +785,61 @@ function SymbolMultiSelect({ value, onChange }: { value: string[]; onChange: (v:
 
   const filtered = NSE_STOCKS.filter((s) => s.includes(search.toUpperCase()));
 
+  const dropdown = open && pos ? (
+    <div
+      ref={dropdownRef}
+      style={{ position: "absolute", top: pos.top, left: pos.left, width: Math.max(pos.width, 256), zIndex: 9999 }}
+      className="bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
+    >
+      <div className="p-2 border-b border-border">
+        <input
+          type="text"
+          placeholder="Search NSE stocks…"
+          className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          autoFocus
+        />
+      </div>
+      {value.length > 0 && (
+        <div className="px-2 pt-1.5 pb-1 border-b border-border flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">{value.length} selected</span>
+          <button
+            className="text-xs text-danger hover:underline"
+            onClick={(e) => { e.stopPropagation(); onChange([]); setOpen(false); }}
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+      <div className="max-h-52 overflow-y-auto p-1 custom-scrollbar">
+        {filtered.length === 0 && (
+          <p className="text-center text-xs text-muted-foreground py-3">No matches</p>
+        )}
+        {filtered.map((sym) => (
+          <label
+            key={sym}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm select-none"
+          >
+            <input
+              type="checkbox"
+              checked={value.includes(sym)}
+              onChange={() => toggle(sym)}
+              className="accent-primary w-3.5 h-3.5"
+            />
+            <span>{sym}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="relative" ref={ref}>
+    <div ref={triggerRef}>
       <div
         className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm cursor-pointer min-h-[38px] flex flex-wrap gap-1 items-center hover:border-primary/60 transition-colors"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleOpen}
       >
         {value.length === 0 && (
           <span className="text-muted-foreground text-sm py-0.5">Select symbols…</span>
@@ -789,53 +859,7 @@ function SymbolMultiSelect({ value, onChange }: { value: string[]; onChange: (v:
           </span>
         ))}
       </div>
-
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-2xl overflow-hidden w-64">
-          <div className="p-2 border-b border-border">
-            <input
-              type="text"
-              placeholder="Search NSE stocks…"
-              className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              autoFocus
-            />
-          </div>
-          {value.length > 0 && (
-            <div className="px-2 pt-1.5 pb-1 border-b border-border flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{value.length} selected</span>
-              <button
-                className="text-xs text-danger hover:underline"
-                onClick={(e) => { e.stopPropagation(); onChange([]); }}
-              >
-                Clear all
-              </button>
-            </div>
-          )}
-          <div className="max-h-52 overflow-y-auto p-1 custom-scrollbar">
-            {filtered.length === 0 && (
-              <p className="text-center text-xs text-muted-foreground py-3">No matches</p>
-            )}
-            {filtered.map((sym) => (
-              <label
-                key={sym}
-                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="checkbox"
-                  checked={value.includes(sym)}
-                  onChange={() => toggle(sym)}
-                  className="accent-primary w-3.5 h-3.5"
-                />
-                <span>{sym}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+      {typeof document !== "undefined" && dropdown && createPortal(dropdown, document.body)}
     </div>
   );
 }
