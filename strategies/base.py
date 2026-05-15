@@ -16,6 +16,8 @@ def align_columns(indicator_df, reference):
     return indicator_df
 
 class BaseStrategy(ABC):
+    # Strategy information for the UI
+    metadata: dict = {}
     # Override to enable position pyramiding (multiple entries add to position)
     accumulate: bool = False
     # Per-entry position size (0.0-1.0 = percent of available capital)

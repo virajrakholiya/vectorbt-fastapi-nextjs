@@ -19,6 +19,22 @@ class IntradayScalperStrategy(BaseStrategy):
     drop in 5-min data and the same code becomes a true intraday scalper.
     """
 
+    metadata = {
+        "label": "Intraday Scalper (ORB + EMA + Pyramid)",
+        "description": "Stock-equivalent of an intraday options scalper. ORB breakout + EMA bias + RSI filter, pyramids on continuation, scalps on tight profit target / trailing stop / max-hold timeout.",
+        "params": [
+            {"name": "breakout_window", "label": "Breakout Window", "type": "number", "default": 5, "min": 2, "max": 50},
+            {"name": "ema_fast", "label": "EMA Fast", "type": "number", "default": 9, "min": 2, "max": 100},
+            {"name": "ema_slow", "label": "EMA Slow", "type": "number", "default": 21, "min": 5, "max": 200},
+            {"name": "rsi_window", "label": "RSI Period", "type": "number", "default": 14, "min": 2, "max": 100},
+            {"name": "rsi_floor", "label": "RSI Floor", "type": "number", "default": 45, "min": 20, "max": 60},
+            {"name": "rsi_ceiling", "label": "RSI Ceiling", "type": "number", "default": 75, "min": 60, "max": 95},
+            {"name": "max_hold", "label": "Max Hold (bars)", "type": "number", "default": 5, "min": 1, "max": 100},
+            {"name": "profit_target", "label": "Profit Target %", "type": "number", "default": 0.03, "min": 0.005, "max": 0.5, "step": 0.005},
+            {"name": "stop_loss", "label": "Trailing Stop %", "type": "number", "default": 0.015, "min": 0.005, "max": 0.2, "step": 0.005},
+        ],
+    }
+
     accumulate = True  # enable pyramiding
     entry_size = 0.25  # each entry uses 25% of available cash → up to 4 stacked entries
 

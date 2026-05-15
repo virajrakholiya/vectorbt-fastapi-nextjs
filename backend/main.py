@@ -106,48 +106,6 @@ STRATEGY_MAP = {
     "intraday_scalper": IntradayScalperStrategy,
 }
 
-STRATEGY_META = {
-    "pro_trader": {
-        "label": "Pro Trader (ADX + ATR + Multi-Signal)",
-        "description": "Trend follower with EMA stack bias + ADX gate. Four entry triggers: MACD cross, RSI oversold reversal, Donchian breakout, Bollinger lower-band bounce. ATR trailing stop + ATR profit target + EMA trend-break exit. Caps concurrent entries per symbol.",
-        "params": [
-            {"name": "ema_fast", "label": "EMA Fast", "type": "number", "default": 9, "min": 2, "max": 50},
-            {"name": "ema_mid", "label": "EMA Mid", "type": "number", "default": 21, "min": 5, "max": 100},
-            {"name": "ema_slow", "label": "EMA Slow", "type": "number", "default": 50, "min": 10, "max": 200},
-            {"name": "rsi_window", "label": "RSI Period", "type": "number", "default": 14, "min": 2, "max": 100},
-            {"name": "rsi_oversold", "label": "RSI Oversold", "type": "number", "default": 40, "min": 10, "max": 50},
-            {"name": "adx_window", "label": "ADX Window", "type": "number", "default": 14, "min": 5, "max": 50},
-            {"name": "adx_threshold", "label": "ADX Threshold", "type": "number", "default": 12, "min": 5, "max": 40},
-            {"name": "donchian_window", "label": "Donchian Window", "type": "number", "default": 15, "min": 5, "max": 100},
-            {"name": "bb_window", "label": "Bollinger Window", "type": "number", "default": 20, "min": 5, "max": 100},
-            {"name": "bb_std", "label": "Bollinger Std Dev", "type": "number", "default": 2.0, "min": 1.0, "max": 3.0, "step": 0.1},
-            {"name": "atr_window", "label": "ATR Window", "type": "number", "default": 14, "min": 5, "max": 50},
-            {"name": "stop_atr_mult", "label": "Stop ATR Mult", "type": "number", "default": 1.5, "min": 0.5, "max": 5.0, "step": 0.1},
-            {"name": "target_atr_mult", "label": "Target ATR Mult", "type": "number", "default": 2.8, "min": 1.0, "max": 10.0, "step": 0.1},
-            {"name": "macd_fast", "label": "MACD Fast", "type": "number", "default": 12, "min": 3, "max": 50},
-            {"name": "macd_slow", "label": "MACD Slow", "type": "number", "default": 26, "min": 10, "max": 100},
-            {"name": "macd_signal", "label": "MACD Signal", "type": "number", "default": 9, "min": 3, "max": 30},
-            {"name": "max_entries_per_symbol", "label": "Max Entries / Symbol", "type": "number", "default": 2, "min": 1, "max": 5},
-        ],
-    },
-    "intraday_scalper": {
-        "label": "Intraday Scalper (ORB + EMA + Pyramid)",
-        "description": "Stock-equivalent of an intraday options scalper. ORB breakout + EMA bias + RSI filter, pyramids on continuation, scalps on tight profit target / trailing stop / max-hold timeout.",
-        "params": [
-            {"name": "breakout_window", "label": "Breakout Window", "type": "number", "default": 5, "min": 2, "max": 50},
-            {"name": "ema_fast", "label": "EMA Fast", "type": "number", "default": 9, "min": 2, "max": 100},
-            {"name": "ema_slow", "label": "EMA Slow", "type": "number", "default": 21, "min": 5, "max": 200},
-            {"name": "rsi_window", "label": "RSI Period", "type": "number", "default": 14, "min": 2, "max": 100},
-            {"name": "rsi_floor", "label": "RSI Floor", "type": "number", "default": 45, "min": 20, "max": 60},
-            {"name": "rsi_ceiling", "label": "RSI Ceiling", "type": "number", "default": 75, "min": 60, "max": 95},
-            {"name": "max_hold", "label": "Max Hold (bars)", "type": "number", "default": 5, "min": 1, "max": 100},
-            {"name": "profit_target", "label": "Profit Target %", "type": "number", "default": 0.03, "min": 0.005, "max": 0.5, "step": 0.005},
-            {"name": "stop_loss", "label": "Trailing Stop %", "type": "number", "default": 0.015, "min": 0.005, "max": 0.2, "step": 0.005},
-        ],
-    },
-}
-
-
 @app.post("/api/backtest", response_model=BacktestResponse)
 async def run_backtest(request: BacktestRequest):
     try:
@@ -301,7 +259,7 @@ async def run_backtest(request: BacktestRequest):
 async def list_strategies():
     return {
         "strategies": [
-            {"id": k, **STRATEGY_META[k]}
-            for k in STRATEGY_MAP.keys()
+            {"id": k, **v.metadata}
+            for k, v in STRATEGY_MAP.items()
         ]
     }
