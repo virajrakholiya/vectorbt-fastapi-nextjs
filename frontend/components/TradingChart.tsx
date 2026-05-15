@@ -34,7 +34,16 @@ export function TradingChart({ data, markers = [] }: { data: any[], markers?: an
       wickDownColor: "#ef4444",
     });
 
-    candlestickSeries.setData(data);
+    const clean = data.filter(
+      (d) =>
+        d &&
+        typeof d.open === "number" &&
+        typeof d.high === "number" &&
+        typeof d.low === "number" &&
+        typeof d.close === "number" &&
+        !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close)
+    );
+    candlestickSeries.setData(clean);
     if (markers.length > 0) {
       candlestickSeries.setMarkers(markers);
     }

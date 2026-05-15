@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Legend,
@@ -52,6 +52,34 @@ type StrategyMeta = {
 
 const PALETTE = ["#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#ef4444", "#84cc16"];
 
+const NSE_STOCKS = [
+  // IT
+  "TCS", "INFY", "WIPRO", "HCLTECH", "TECHM", "LTIM",
+  // Finance
+  "HDFCBANK", "ICICIBANK", "KOTAKBANK", "AXISBANK", "SBIN", "BAJFINANCE", "BAJAJFINSV",
+  "INDUSINDBK", "HDFCLIFE", "SBILIFE", "ICICIGI",
+  // Energy & Commodities
+  "RELIANCE", "ONGC", "BPCL", "COALINDIA", "NTPC", "POWERGRID",
+  "TATASTEEL", "JSWSTEEL", "HINDALCO", "ADANIENT", "ADANIPORTS",
+  // Consumer
+  "HINDUNILVR", "ITC", "NESTLEIND", "TITAN", "ASIANPAINT", "PIDILITIND",
+  // Auto
+  "MARUTI", "HEROMOTOCO", "EICHERMOT", "TATAMOTORS",
+  // Pharma
+  "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP",
+  // Capital Goods / Others
+  "LT", "ULTRACEMCO", "GRASIM", "SHREECEM", "BHARTIARTL", "TATACONSUM",
+];
+
+const TIMEFRAMES = [
+  { value: "1D", label: "Daily" },
+  { value: "1W", label: "Weekly" },
+  { value: "240", label: "4-Hour" },
+  { value: "60", label: "1-Hour" },
+  { value: "30", label: "30-Min" },
+  { value: "15", label: "15-Min" },
+];
+
 const fmtCurrency = (n: number, max = 0) =>
   `₹${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: max })}`;
 
@@ -81,6 +109,7 @@ export default function Dashboard() {
   const [config, setConfig] = useState({
     strategy_name: "pro_trader",
     symbols: ["RELIANCE", "TCS", "INFY"],
+    timeframe: "1D",
     start_date: "2023-01-01",
     end_date: "2023-12-31",
     initial_capital: 50000,
@@ -179,7 +208,7 @@ ${strategy?.params.map((p) => `- ${p.label}: default ${p.default}, range ${p.min
 - **Fees**: 0.10% per side
 - **Slippage**: 0.05%
 - **Data source**: FYERS (NSE) / yfinance fallback, daily bars
-- **Timeframe**: Daily
+- **Timeframe**: ${TIMEFRAMES.find(t => t.value === config.timeframe)?.label ?? config.timeframe}
 
 ## Headline Metrics
 | Metric | Value |
@@ -333,7 +362,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
         </div>
 
         {/* Configuration row */}
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <FieldWrapper icon={<Settings className="w-3.5 h-3.5" />} label="Strategy">
             <select
               className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary cursor-pointer w-full"
@@ -348,18 +377,22 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
           </FieldWrapper>
 
           <FieldWrapper icon={<Tag className="w-3.5 h-3.5" />} label="Symbols">
-            <input
-              type="text"
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
-              value={config.symbols.join(", ")}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  symbols: e.target.value.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean),
-                })
-              }
-              placeholder="RELIANCE, TCS, INFY"
+            <SymbolMultiSelect
+              value={config.symbols}
+              onChange={(v) => setConfig({ ...config, symbols: v })}
             />
+          </FieldWrapper>
+
+          <FieldWrapper icon={<Activity className="w-3.5 h-3.5" />} label="Timeframe">
+            <select
+              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary cursor-pointer w-full"
+              value={config.timeframe}
+              onChange={(e) => setConfig({ ...config, timeframe: e.target.value })}
+            >
+              {TIMEFRAMES.map((tf) => (
+                <option key={tf.value} value={tf.value}>{tf.label}</option>
+              ))}
+            </select>
           </FieldWrapper>
 
           <FieldWrapper icon={<Calendar className="w-3.5 h-3.5" />} label="Start Date">
@@ -707,6 +740,100 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SymbolMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const toggle = (sym: string) => {
+    onChange(value.includes(sym) ? value.filter((s) => s !== sym) : [...value, sym]);
+  };
+
+  const filtered = NSE_STOCKS.filter((s) => s.includes(search.toUpperCase()));
+
+  return (
+    <div className="relative" ref={ref}>
+      <div
+        className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm cursor-pointer min-h-[38px] flex flex-wrap gap-1 items-center hover:border-primary/60 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {value.length === 0 && (
+          <span className="text-muted-foreground text-sm py-0.5">Select symbols…</span>
+        )}
+        {value.map((sym) => (
+          <span
+            key={sym}
+            className="inline-flex items-center gap-1 bg-primary/15 text-primary text-xs px-2 py-0.5 rounded-full border border-primary/30"
+          >
+            {sym}
+            <button
+              onClick={(e) => { e.stopPropagation(); toggle(sym); }}
+              className="hover:text-danger leading-none ml-0.5"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-2xl overflow-hidden w-64">
+          <div className="p-2 border-b border-border">
+            <input
+              type="text"
+              placeholder="Search NSE stocks…"
+              className="w-full bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:border-primary"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              autoFocus
+            />
+          </div>
+          {value.length > 0 && (
+            <div className="px-2 pt-1.5 pb-1 border-b border-border flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{value.length} selected</span>
+              <button
+                className="text-xs text-danger hover:underline"
+                onClick={(e) => { e.stopPropagation(); onChange([]); }}
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+          <div className="max-h-52 overflow-y-auto p-1 custom-scrollbar">
+            {filtered.length === 0 && (
+              <p className="text-center text-xs text-muted-foreground py-3">No matches</p>
+            )}
+            {filtered.map((sym) => (
+              <label
+                key={sym}
+                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm select-none"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={value.includes(sym)}
+                  onChange={() => toggle(sym)}
+                  className="accent-primary w-3.5 h-3.5"
+                />
+                <span>{sym}</span>
+              </label>
+            ))}
+          </div>
         </div>
       )}
     </div>

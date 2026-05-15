@@ -117,8 +117,17 @@ class DataFetcher:
         # YFinance uses '.NS' suffix for NSE stocks
         yf_symbols = [f"{sym}.NS" for sym in symbols]
         
-        # Mapping timeframe
-        interval = "1d" if timeframe in ["D", "1D"] else timeframe
+        # Mapping timeframe to yfinance interval strings
+        _yf_map = {
+            "D": "1d", "1D": "1d",
+            "W": "1wk", "1W": "1wk",
+            "M": "1mo", "1M": "1mo",
+            "240": "60m", "180": "90m", "120": "60m",
+            "60": "60m", "45": "30m", "30": "30m",
+            "20": "15m", "15": "15m", "10": "5m",
+            "5": "5m", "3": "2m", "2": "2m", "1": "1m",
+        }
+        interval = _yf_map.get(timeframe, timeframe)
         
         df = yf.download(yf_symbols, start=start_date, end=end_date, interval=interval)
         
