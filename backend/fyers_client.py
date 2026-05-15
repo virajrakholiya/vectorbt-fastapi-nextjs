@@ -53,13 +53,21 @@ class DataFetcher:
             
     def fetch_data(self, symbols: list, start_date: str, end_date: str, timeframe: str = "1D") -> pd.DataFrame:
         """
-        Fetches OHLCV data. Falls back to yfinance if FYERS credentials are not set.
+        Fetches OHLCV data. Falls back to yfinance if FYERS credentials are not set or fail.
         Returns a MultiIndex DataFrame if multiple symbols, else single Index DataFrame.
         """
+        df = pd.DataFrame()
         if self.use_fyers:
-            return self._fetch_from_fyers(symbols, start_date, end_date, timeframe)
-        else:
-            return self._fetch_from_yfinance(symbols, start_date, end_date, timeframe)
+            try:
+                df = self._fetch_from_fyers(symbols, start_date, end_date, timeframe)
+            except Exception as e:
+                print(f"FYERS fetch failed: {e}")
+        
+        if df.empty:
+            print("Falling back to yfinance...")
+            df = self._fetch_from_yfinance(symbols, start_date, end_date, timeframe)
+            
+        return df
 
     def _fetch_from_fyers(self, symbols: list, start_date: str, end_date: str, timeframe: str) -> pd.DataFrame:
         print("Fetching data from FYERS API...")

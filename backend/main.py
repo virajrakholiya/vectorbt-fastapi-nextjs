@@ -1,8 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from backend.models import BacktestRequest, BacktestResponse
 from backend.fyers_client import DataFetcher
 from backend.engine import BacktestEngine, _extract_symbol
+from fyers_apiv3 import fyersModel
+from dotenv import set_key
 import pandas as pd
 import sys
 import os
@@ -24,6 +27,80 @@ app.add_middleware(
 
 data_fetcher = DataFetcher()
 
+
+@app.get("/", response_class=HTMLResponse)
+async def handle_fyers_redirect(request: Request):
+    auth_code = request.query_params.get("auth_code")
+    if not auth_code:
+        return """
+        <html>
+            <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f4f4f9;">
+                <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center;">
+                    <h1 style="color: #333;">Fyers Auth Portal</h1>
+                    <p style="color: #666;">No auth code found in URL.</p>
+                </div>
+            </body>
+        </html>
+        """
+
+    client_id = os.getenv("FYERS_APP_ID")
+    secret_key = os.getenv("FYERS_SECRET_KEY")
+    redirect_uri = os.getenv("FYERS_REDIRECT_URI")
+
+    try:
+        session = fyersModel.SessionModel(
+            client_id=client_id,
+            secret_key=secret_key,
+            redirect_uri=redirect_uri,
+            response_type="code",
+            grant_type="authorization_code"
+        )
+        session.set_token(auth_code)
+        response = session.generate_token()
+
+        if response.get("s") == "ok":
+            access_token = response.get("access_token")
+            # Update .env
+            env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+            set_key(env_path, "FYERS_ACCESS_TOKEN", access_token)
+            
+            return f"""
+            <html>
+                <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #e8f5e9;">
+                    <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 600px; width: 100%;">
+                        <h1 style="color: #2e7d32; text-align: center;">Auth Successful!</h1>
+                        <p style="color: #333; margin-bottom: 0.5rem;"><strong>Access Token:</strong></p>
+                        <textarea readonly style="width: 100%; height: 100px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 0.9rem;">{access_token}</textarea>
+                        <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; text-align: center;">The token has been automatically saved to your .env file.</p>
+                        <div style="text-align: center; margin-top: 1.5rem;">
+                            <button onclick="navigator.clipboard.writeText('{{access_token}}')" style="background: #2e7d32; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 4px; cursor: pointer; font-weight: bold;">Copy Token</button>
+                        </div>
+                    </div>
+                    <script>
+                        function copyToClipboard(text) {{
+                            navigator.clipboard.writeText(text).then(() => {{
+                                alert('Token copied to clipboard!');
+                            }});
+                        }}
+                    </script>
+                </body>
+            </html>
+            """.replace("{{access_token}}", access_token)
+        else:
+            return f"""
+            <html>
+                <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #ffebee;">
+                    <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center;">
+                        <h1 style="color: #c62828;">Token Generation Failed</h1>
+                        <p style="color: #333;">{response.get('message', 'Unknown error')}</p>
+                    </div>
+                </body>
+            </html>
+            """
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 STRATEGY_MAP = {
     "pro_trader": ProTraderStrategy,
     "intraday_scalper": IntradayScalperStrategy,
@@ -31,29 +108,26 @@ STRATEGY_MAP = {
 
 STRATEGY_META = {
     "pro_trader": {
-        "label": "Pro Trader (ADX + ATR + Multi-Signal v2)",
-        "description": "Trend follower with macro regime gate (200-EMA), 5 entry triggers (MACD / RSI reversal / Donchian breakout / BB bounce / EMA21 pullback), ATR trailing stop that tightens once in profit, profit-only pyramiding (no avg-down), and 60-bar time stop on dead trades.",
+        "label": "Pro Trader (ADX + ATR + Multi-Signal)",
+        "description": "Trend follower with EMA stack bias + ADX gate. Four entry triggers: MACD cross, RSI oversold reversal, Donchian breakout, Bollinger lower-band bounce. ATR trailing stop + ATR profit target + EMA trend-break exit. Caps concurrent entries per symbol.",
         "params": [
             {"name": "ema_fast", "label": "EMA Fast", "type": "number", "default": 9, "min": 2, "max": 50},
             {"name": "ema_mid", "label": "EMA Mid", "type": "number", "default": 21, "min": 5, "max": 100},
             {"name": "ema_slow", "label": "EMA Slow", "type": "number", "default": 50, "min": 10, "max": 200},
             {"name": "rsi_window", "label": "RSI Period", "type": "number", "default": 14, "min": 2, "max": 100},
             {"name": "rsi_oversold", "label": "RSI Oversold", "type": "number", "default": 40, "min": 10, "max": 50},
-            {"name": "rsi_pullback_max", "label": "RSI Pullback Max", "type": "number", "default": 55, "min": 40, "max": 70},
             {"name": "adx_window", "label": "ADX Window", "type": "number", "default": 14, "min": 5, "max": 50},
-            {"name": "adx_threshold", "label": "ADX Threshold", "type": "number", "default": 15, "min": 10, "max": 40},
+            {"name": "adx_threshold", "label": "ADX Threshold", "type": "number", "default": 12, "min": 5, "max": 40},
             {"name": "donchian_window", "label": "Donchian Window", "type": "number", "default": 15, "min": 5, "max": 100},
             {"name": "bb_window", "label": "Bollinger Window", "type": "number", "default": 20, "min": 5, "max": 100},
+            {"name": "bb_std", "label": "Bollinger Std Dev", "type": "number", "default": 2.0, "min": 1.0, "max": 3.0, "step": 0.1},
             {"name": "atr_window", "label": "ATR Window", "type": "number", "default": 14, "min": 5, "max": 50},
-            {"name": "stop_atr_mult", "label": "Stop ATR Mult", "type": "number", "default": 1.8, "min": 0.5, "max": 5.0, "step": 0.1},
-            {"name": "tight_stop_mult", "label": "Tight Stop Mult (in profit)", "type": "number", "default": 1.2, "min": 0.3, "max": 3.0, "step": 0.1},
-            {"name": "profit_lock_atr", "label": "Profit Lock ATR", "type": "number", "default": 3.0, "min": 0.5, "max": 10.0, "step": 0.1},
-            {"name": "target_atr_mult", "label": "Target ATR Mult", "type": "number", "default": 4.5, "min": 1.0, "max": 10.0, "step": 0.1},
+            {"name": "stop_atr_mult", "label": "Stop ATR Mult", "type": "number", "default": 1.5, "min": 0.5, "max": 5.0, "step": 0.1},
+            {"name": "target_atr_mult", "label": "Target ATR Mult", "type": "number", "default": 2.8, "min": 1.0, "max": 10.0, "step": 0.1},
+            {"name": "macd_fast", "label": "MACD Fast", "type": "number", "default": 12, "min": 3, "max": 50},
+            {"name": "macd_slow", "label": "MACD Slow", "type": "number", "default": 26, "min": 10, "max": 100},
+            {"name": "macd_signal", "label": "MACD Signal", "type": "number", "default": 9, "min": 3, "max": 30},
             {"name": "max_entries_per_symbol", "label": "Max Entries / Symbol", "type": "number", "default": 2, "min": 1, "max": 5},
-            {"name": "pyramid_min_atr", "label": "Pyramid Min ATR Step", "type": "number", "default": 0.3, "min": 0.0, "max": 2.0, "step": 0.1},
-            {"name": "time_stop_bars", "label": "Time Stop (bars)", "type": "number", "default": 90, "min": 10, "max": 250},
-            {"name": "use_regime_filter", "label": "Use Regime Gate (1/0)", "type": "number", "default": 1, "min": 0, "max": 1},
-            {"name": "regime_ema_window", "label": "Regime EMA Window", "type": "number", "default": 100, "min": 50, "max": 400},
         ],
     },
     "intraday_scalper": {
@@ -108,6 +182,7 @@ async def run_backtest(request: BacktestRequest):
             exits,
             size=getattr(strategy, "entry_size", 1.0),
             accumulate=getattr(strategy, "accumulate", False),
+            direction=getattr(strategy, "direction", "long"),
         )
 
         metrics = engine.get_metrics(portfolio)

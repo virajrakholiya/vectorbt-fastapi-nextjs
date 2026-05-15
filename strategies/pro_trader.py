@@ -6,6 +6,7 @@ import vectorbt as vbt
 
 class ProTraderStrategy(BaseStrategy):
     """
+    Mu
     Multi-signal trend follower with volatility-aware stops.
 
     CHANGES vs original:

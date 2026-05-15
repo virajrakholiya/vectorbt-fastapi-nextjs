@@ -1,7 +1,7 @@
 # Unified startup script for VectorBT project
 
-# 1. Start Backend in a new process
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "uv run uvicorn backend.main:app --reload"
+# 1. Start Backend in a new process on port 5000
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "uv run uvicorn backend.main:app --reload --port 5000"
 
 # 2. Start Frontend in a new process
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev"

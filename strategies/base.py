@@ -20,6 +20,8 @@ class BaseStrategy(ABC):
     accumulate: bool = False
     # Per-entry position size (0.0-1.0 = percent of available capital)
     entry_size: float = 1.0
+    # Trading direction: 'long' or 'short'
+    direction: str = 'long'
 
     def __init__(self, data: pd.DataFrame, params: dict = None):
         self.data = data

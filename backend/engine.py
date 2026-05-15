@@ -52,6 +52,7 @@ class BacktestEngine:
         exits: pd.DataFrame,
         size: float = 1.0,
         accumulate: bool = False,
+        direction: str = "long",
     ) -> vbt.Portfolio:
         """
         Run VectorBT portfolio simulation.
@@ -64,12 +65,19 @@ class BacktestEngine:
 
         is_multi_symbol = isinstance(close_prices, pd.DataFrame) and close_prices.shape[1] > 1
 
+        vbt_entries = entries if direction == "long" else None
+        vbt_exits = exits if direction == "long" else None
+        vbt_short_entries = entries if direction == "short" else None
+        vbt_short_exits = exits if direction == "short" else None
+
         if self.intraday_mode:
             effective_size = size * self.leverage
             portfolio = vbt.Portfolio.from_signals(
                 close=close_prices,
-                entries=entries,
-                exits=exits,
+                entries=vbt_entries,
+                exits=vbt_exits,
+                short_entries=vbt_short_entries,
+                short_exits=vbt_short_exits,
                 init_cash=self.initial_capital,
                 fees=0.0,
                 fixed_fees=20.0,
@@ -84,8 +92,10 @@ class BacktestEngine:
         else:
             portfolio = vbt.Portfolio.from_signals(
                 close=close_prices,
-                entries=entries,
-                exits=exits,
+                entries=vbt_entries,
+                exits=vbt_exits,
+                short_entries=vbt_short_entries,
+                short_exits=vbt_short_exits,
                 init_cash=self.initial_capital,
                 fees=self.fees,
                 slippage=self.slippage,

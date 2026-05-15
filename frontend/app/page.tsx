@@ -119,7 +119,7 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/strategies")
+    fetch("http://localhost:5000/api/strategies")
       .then((r) => r.json())
       .then((d) => setStrategies(d.strategies || []))
       .catch(() => {});
@@ -269,7 +269,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("http://localhost:8000/api/backtest", {
+      const res = await fetch("http://localhost:5000/api/backtest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
