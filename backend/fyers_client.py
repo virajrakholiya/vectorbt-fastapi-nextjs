@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 
+from .data_cache import DataCache
+
 # FYERS API limits per resolution (in days)
 _FYERS_MAX_DAYS = {
     "1D": 366,
@@ -27,9 +29,9 @@ def _chunk_date_ranges(start_date: str, end_date: str, max_days: int):
         current = chunk_end + timedelta(days=1)
     return chunks
 
+
 class DataFetcher:
     def __init__(self):
-        # Load .env from backend directory regardless of CWD
         backend_dir = Path(__file__).resolve().parent
         env_path = backend_dir / ".env"
         load_dotenv(dotenv_path=env_path)
@@ -39,10 +41,8 @@ class DataFetcher:
         self.use_fyers = bool(self.fyers_app_id and self.fyers_access_token)
 
         if self.use_fyers:
-            # FyersModel requires log_path directory to exist; create absolute path
             log_dir = backend_dir / "data"
             log_dir.mkdir(parents=True, exist_ok=True)
-            # FyersModel concatenates log_path + "fyersApi.log" so trailing separator required
             log_path_str = str(log_dir) + os.sep
 
             self.fyers = fyersModel.FyersModel(
@@ -50,38 +50,96 @@ class DataFetcher:
                 token=self.fyers_access_token,
                 log_path=log_path_str,
             )
-            
-    def fetch_data(self, symbols: list, start_date: str, end_date: str, timeframe: str = "1D") -> pd.DataFrame:
+
+        cache_dir = backend_dir / "data" / "cache"
+        self.cache = DataCache(cache_dir)
+
+    # ------------------------------------------------------------------
+    def fetch_data(
+        self,
+        symbols: list,
+        start_date: str,
+        end_date: str,
+        timeframe: str = "1D",
+    ) -> pd.DataFrame:
         """
-        Fetches OHLCV data. Falls back to yfinance if FYERS credentials are not set or fail.
-        Returns a MultiIndex DataFrame if multiple symbols, else single Index DataFrame.
+        Return MultiIndex OHLCV DataFrame.
+        Serves from disk cache when possible; fetches from API only on miss.
+        Cache is per-symbol per-timeframe so changing timeframe still uses cache.
         """
-        df = pd.DataFrame()
+        cached_sym_dfs: dict[str, pd.DataFrame] = {}
+        to_fetch: list[str] = []
+
+        for sym in symbols:
+            hit = self.cache.get(sym, timeframe, start_date, end_date)
+            if hit is not None:
+                cached_sym_dfs[sym] = hit
+            else:
+                to_fetch.append(sym)
+
+        if to_fetch:
+            fetched_map = self._fetch_raw(to_fetch, start_date, end_date, timeframe)
+            for sym, sym_df in fetched_map.items():
+                self.cache.put(sym, timeframe, sym_df)
+                # slice to requested range after caching full fetch
+                idx = sym_df.index
+                if idx.tz is not None:
+                    idx = idx.tz_localize(None)
+                    sym_df = sym_df.copy()
+                    sym_df.index = idx
+                s = pd.Timestamp(start_date)
+                e = pd.Timestamp(end_date)
+                cached_sym_dfs[sym] = sym_df.loc[s:e]
+
+        if not cached_sym_dfs:
+            return pd.DataFrame()
+
+        all_dfs = []
+        for sym, df in cached_sym_dfs.items():
+            df = df.copy()
+            df.columns = pd.MultiIndex.from_product([[sym], df.columns])
+            all_dfs.append(df)
+
+        return pd.concat(all_dfs, axis=1)
+
+    # ------------------------------------------------------------------
+    def _fetch_raw(
+        self,
+        symbols: list,
+        start_date: str,
+        end_date: str,
+        timeframe: str,
+    ) -> dict[str, pd.DataFrame]:
+        """
+        Fetch from FYERS (or yfinance fallback).
+        Returns dict {symbol: single-level-OHLCV DataFrame}.
+        """
+        result: dict[str, pd.DataFrame] = {}
+
         if self.use_fyers:
             try:
-                df = self._fetch_from_fyers(symbols, start_date, end_date, timeframe)
+                result = self._fetch_from_fyers(symbols, start_date, end_date, timeframe)
             except Exception as e:
                 print(f"FYERS fetch failed: {e}")
-        
-        if df.empty:
-            print("Falling back to yfinance...")
-            df = self._fetch_from_yfinance(symbols, start_date, end_date, timeframe)
-            
-        return df
 
-    def _fetch_from_fyers(self, symbols: list, start_date: str, end_date: str, timeframe: str) -> pd.DataFrame:
+        missing = [s for s in symbols if s not in result or result[s].empty]
+        if missing:
+            print(f"Falling back to yfinance for: {missing}")
+            yf_result = self._fetch_from_yfinance(missing, start_date, end_date, timeframe)
+            result.update(yf_result)
+
+        return result
+
+    # ------------------------------------------------------------------
+    def _fetch_from_fyers(
+        self, symbols: list, start_date: str, end_date: str, timeframe: str
+    ) -> dict[str, pd.DataFrame]:
         print("Fetching data from FYERS API...")
-        # FYERS mapping for timeframe
         res = "1D" if timeframe in ["D", "1D"] else timeframe
-
-        # Determine max chunk size based on resolution
-        if res in _FYERS_MAX_DAYS:
-            max_days = _FYERS_MAX_DAYS[res]
-        else:
-            max_days = _FYERS_INTRADAY_MAX_DAYS
-
+        max_days = _FYERS_MAX_DAYS.get(res, _FYERS_INTRADAY_MAX_DAYS)
         date_chunks = _chunk_date_ranges(start_date, end_date, max_days)
-        all_data = []
+
+        result: dict[str, pd.DataFrame] = {}
 
         for sym in symbols:
             sym_chunks = []
@@ -107,25 +165,20 @@ class DataFetcher:
                         chunk_df.set_index("date", inplace=True)
                         sym_chunks.append(chunk_df)
                 else:
-                    print(f"Error fetching {sym} [{chunk_start}..{chunk_end}] from FYERS: {response}")
+                    print(f"Error fetching {sym} [{chunk_start}..{chunk_end}]: {response}")
 
             if sym_chunks:
                 df = pd.concat(sym_chunks).sort_index()
                 df = df[~df.index.duplicated(keep="first")]
-                df.columns = pd.MultiIndex.from_product([[sym], df.columns])
-                all_data.append(df)
+                result[sym] = df
 
-        if not all_data:
-            return pd.DataFrame()
+        return result
 
-        return pd.concat(all_data, axis=1)
-
-    def _fetch_from_yfinance(self, symbols: list, start_date: str, end_date: str, timeframe: str) -> pd.DataFrame:
-        print("FYERS credentials not found, falling back to yfinance...")
-        # YFinance uses '.NS' suffix for NSE stocks
-        yf_symbols = [f"{sym}.NS" for sym in symbols]
-        
-        # Mapping timeframe to yfinance interval strings
+    # ------------------------------------------------------------------
+    def _fetch_from_yfinance(
+        self, symbols: list, start_date: str, end_date: str, timeframe: str
+    ) -> dict[str, pd.DataFrame]:
+        print("Fetching from yfinance...")
         _yf_map = {
             "D": "1d", "1D": "1d",
             "W": "1wk", "1W": "1wk",
@@ -136,22 +189,38 @@ class DataFetcher:
             "5": "5m", "3": "2m", "2": "2m", "1": "1m",
         }
         interval = _yf_map.get(timeframe, timeframe)
-        
-        df = yf.download(yf_symbols, start=start_date, end=end_date, interval=interval)
-        
-        # YFinance returns columns as (Attribute, Ticker). We swap to match (Ticker, Attribute)
-        # and remove '.NS' suffix
-        if len(symbols) > 1:
-            df = df.swaplevel(axis=1)
-            df.columns = df.columns.set_levels([col.replace(".NS", "") for col in df.columns.levels[0]], level=0)
-            df.columns = df.columns.set_names([None, None])
-            df.sort_index(axis=1, inplace=True)
-            # Make columns lowercase to match standard
-            df.columns = pd.MultiIndex.from_tuples([(c[0], c[1].lower()) for c in df.columns])
-        else:
-            # Single symbol case
+        yf_symbols = [f"{sym}.NS" for sym in symbols]
+
+        raw = yf.download(yf_symbols, start=start_date, end=end_date, interval=interval)
+
+        result: dict[str, pd.DataFrame] = {}
+
+        if len(symbols) == 1:
             sym = symbols[0]
+            df = raw.copy()
             df.columns = [c.lower() for c in df.columns]
-            df.columns = pd.MultiIndex.from_product([[sym], df.columns])
-            
-        return df
+            if df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
+            result[sym] = df
+        else:
+            # MultiIndex: (Attribute, Ticker) → swap to (Ticker, Attribute)
+            raw = raw.swaplevel(axis=1)
+            raw.columns = raw.columns.set_levels(
+                [col.replace(".NS", "") for col in raw.columns.levels[0]], level=0
+            )
+            raw.columns = raw.columns.set_names([None, None])
+            raw.sort_index(axis=1, inplace=True)
+            raw.columns = pd.MultiIndex.from_tuples(
+                [(c[0], c[1].lower()) for c in raw.columns]
+            )
+            if raw.index.tz is not None:
+                raw.index = raw.index.tz_localize(None)
+
+            for sym in symbols:
+                try:
+                    df = raw[sym].copy()
+                    result[sym] = df
+                except KeyError:
+                    print(f"[yfinance] no data for {sym}")
+
+        return result
