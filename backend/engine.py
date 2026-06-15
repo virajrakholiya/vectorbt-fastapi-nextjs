@@ -5,6 +5,53 @@ import pandas as pd
 # Match symbol portion in vectorBT Column field, e.g. "(10, 50, INFY)" -> "INFY"
 _SYMBOL_RE = re.compile(r"([A-Z0-9._-]{2,})")
 
+# --- Realistic NSE equity transaction costs (discount-broker / Zerodha-style) ---
+# Applied as a blended per-order percentage (`fees`) + flat per-order charge (`fixed_fees`).
+# STT and stamp duty are single-side in reality (sell-only / buy-only); we average them
+# across the entry+exit legs into one per-order rate so vectorbt's symmetric fee model
+# still reflects the true round-trip cost.
+#
+# Intraday (MIS) per order:
+#   STT 0.025% (sell) -> 0.0125% avg | exch txn 0.00297% | stamp 0.003% (buy) -> 0.0015% avg
+#   SEBI 0.0001% | GST 18% on txn -> 0.000535%   => sum ~0.0176%
+#   brokerage flat Rs20 + 18% GST = Rs23.6 per order
+_INTRADAY_FEES_PCT = 0.000176
+_INTRADAY_FIXED_FEES = 23.6
+#
+# Delivery (CNC) per order:
+#   STT 0.1% (both sides) | exch txn 0.00297% | stamp 0.015% (buy) -> 0.0075% avg
+#   SEBI 0.0001% | GST 18% on txn -> 0.000535%   => sum ~0.111%
+#   brokerage 0 (free delivery)
+_DELIVERY_FEES_PCT = 0.00111
+_DELIVERY_FIXED_FEES = 0.0
+
+# NSE equity session = 375 trading minutes/day, ~252 trading days/year.
+_NSE_TRADING_MINUTES_PER_YEAR = 252 * 375  # 94,500
+
+
+def _resolve_freq(timeframe: str):
+    """
+    Map a UI timeframe to (bar_freq, year_freq) so vectorbt annualizes correctly.
+
+    vectorbt's annualization factor = year_freq / bar_freq. Hardcoding "D" made it
+    treat every intraday bar as one calendar day, inflating/garbling Sharpe by 25-100x.
+    For intraday we anchor year_freq to NSE *trading* minutes (not 365 calendar days),
+    and for daily we use 252 trading days (equity convention) instead of 365.
+    """
+    tf = str(timeframe).upper()
+    if tf in ("D", "1D"):
+        return "1D", pd.Timedelta(days=252)
+    if tf in ("W", "1W"):
+        return "1W", pd.Timedelta(weeks=52)
+    if tf in ("M", "1M"):
+        return "30D", pd.Timedelta(days=360)
+    # intraday: timeframe is a minute count as a string ("1", "5", "15", "60", "240"...)
+    try:
+        n = int(tf)
+    except (TypeError, ValueError):
+        return "1D", pd.Timedelta(days=252)
+    return f"{n}min", pd.Timedelta(minutes=_NSE_TRADING_MINUTES_PER_YEAR)
+
 
 def _extract_symbol(column_value, fallback_symbols=None):
     """Pull the trading symbol out of a vectorBT Column field."""
@@ -38,6 +85,7 @@ class BacktestEngine:
         slippage: float = 0.0005,
         intraday_mode: bool = False,
         leverage: float = 1.0,
+        timeframe: str = "1D",
     ):
         self.data = data
         self.initial_capital = initial_capital
@@ -45,6 +93,7 @@ class BacktestEngine:
         self.slippage = slippage
         self.intraday_mode = intraday_mode
         self.leverage = leverage
+        self.timeframe = timeframe
 
     def run(
         self,
@@ -70,42 +119,41 @@ class BacktestEngine:
         vbt_short_entries = entries if direction == "short" else None
         vbt_short_exits = exits if direction == "short" else None
 
+        # Realistic NSE cost model: intraday (MIS) leverages size and pays flat
+        # brokerage + taxes; delivery (CNC) is unleveraged with higher STT.
         if self.intraday_mode:
             effective_size = size * self.leverage
-            portfolio = vbt.Portfolio.from_signals(
-                close=close_prices,
-                entries=vbt_entries,
-                exits=vbt_exits,
-                short_entries=vbt_short_entries,
-                short_exits=vbt_short_exits,
-                init_cash=self.initial_capital,
-                fees=0.0,
-                fixed_fees=20.0,
-                slippage=self.slippage,
-                size=effective_size,
-                size_type="percent",
-                freq="D",
-                group_by=True if is_multi_symbol else None,
-                cash_sharing=True if is_multi_symbol else False,
-                accumulate=accumulate,
-            )
+            fees_pct = _INTRADAY_FEES_PCT
+            fixed_fees = _INTRADAY_FIXED_FEES
         else:
-            portfolio = vbt.Portfolio.from_signals(
-                close=close_prices,
-                entries=vbt_entries,
-                exits=vbt_exits,
-                short_entries=vbt_short_entries,
-                short_exits=vbt_short_exits,
-                init_cash=self.initial_capital,
-                fees=self.fees,
-                slippage=self.slippage,
-                size=size,
-                size_type="percent",
-                freq="D",
-                group_by=True if is_multi_symbol else None,
-                cash_sharing=True if is_multi_symbol else False,
-                accumulate=accumulate,
-            )
+            effective_size = size
+            fees_pct = _DELIVERY_FEES_PCT
+            fixed_fees = _DELIVERY_FIXED_FEES
+
+        # Correct annualization: bar spacing + trading-time year (see _resolve_freq).
+        # `year_freq` isn't a from_signals kwarg in this vectorbt build, so set it on
+        # the global returns config. Safe here: run() + get_metrics() execute in one
+        # synchronous stretch per request (no event-loop yield between them).
+        freq, year_freq = _resolve_freq(self.timeframe)
+        vbt.settings.returns["year_freq"] = year_freq
+
+        portfolio = vbt.Portfolio.from_signals(
+            close=close_prices,
+            entries=vbt_entries,
+            exits=vbt_exits,
+            short_entries=vbt_short_entries,
+            short_exits=vbt_short_exits,
+            init_cash=self.initial_capital,
+            fees=fees_pct,
+            fixed_fees=fixed_fees,
+            slippage=self.slippage,
+            size=effective_size,
+            size_type="percent",
+            freq=freq,
+            group_by=True if is_multi_symbol else None,
+            cash_sharing=True if is_multi_symbol else False,
+            accumulate=accumulate,
+        )
 
         return portfolio
 
@@ -144,10 +192,6 @@ class BacktestEngine:
             total_values = portfolio.value()
         except Exception:
             total_values = pd.Series(dtype=float)
-        try:
-            total_drawdown = portfolio.drawdown()
-        except Exception:
-            total_drawdown = pd.Series(dtype=float)
 
         # Force per-asset view for symbol breakdown (even when group_by=True)
         try:
@@ -167,8 +211,14 @@ class BacktestEngine:
 
         if isinstance(total_values, pd.DataFrame):
             total_values = total_values.sum(axis=1)
-        if isinstance(total_drawdown, pd.DataFrame):
-            total_drawdown = total_drawdown.mean(axis=1)
+
+        # True portfolio drawdown from the aggregated equity curve.
+        # (Previously averaged per-symbol drawdowns — mathematically meaningless.)
+        if len(total_values) > 0:
+            running_peak = total_values.cummax()
+            total_drawdown = total_values / running_peak - 1.0
+        else:
+            total_drawdown = pd.Series(dtype=float)
 
         equity_curve = [
             {"date": idx.strftime("%Y-%m-%d %H:%M"), "value": float(val)}

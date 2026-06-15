@@ -133,6 +133,7 @@ async def run_backtest(request: BacktestRequest):
             slippage=0.0005,
             intraday_mode=request.intraday_mode,
             leverage=request.leverage,
+            timeframe=request.timeframe,
         )
 
         portfolio = engine.run(
