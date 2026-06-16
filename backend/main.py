@@ -13,7 +13,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from strategies.intraday_scalper import IntradayScalperStrategy
-from strategies.pro_trader import ProTraderStrategy
 
 app = FastAPI(title="VectorBT Backtesting API")
 
@@ -102,7 +101,7 @@ async def handle_fyers_redirect(request: Request):
 
 
 STRATEGY_MAP = {
-    "pro_trader": ProTraderStrategy,
+
     "intraday_scalper": IntradayScalperStrategy,
 }
 

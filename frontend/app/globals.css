@@ -2,71 +2,175 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  AMBER-PHOSPHOR TRADING TERMINAL
+  Pure black canvas · amber CRT accent · monospace data · hairline borders.
+*/
+
 :root {
-  --background: #0b1220;
-  --foreground: #e2e8f0;
-  --border: #1e293b;
-  --card: #111c2f;
-  --card-foreground: #f8fafc;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --success: #22c55e;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #8b5cf6;
+  --background: #000000;
+  --foreground: #e9e7e0;
+  --border: #222226;
+  --border-strong: #38383e;
+  --card: #0a0a0b;
+  --card-elevated: #101012;
+  --card-foreground: #f5f3ec;
+
+  /* Amber phosphor — the single signature accent */
+  --primary: #ffb000;
+  --primary-foreground: #0a0a0b;
+
+  /* P&L signals — kept distinct for trader legibility */
+  --success: #3ad07a;
+  --danger: #ff4d4d;
+  --warning: #ff8a3d;
+
+  --input-bg: #1a1a1e;
+  --muted: #1a1a1e;
+  --muted-foreground: #8a8a85;
+  --accent: #ffb000;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.06) 0%, transparent 40%),
-    radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.05) 0%, transparent 40%),
-    var(--background);
-  background-attachment: fixed;
+  position: relative;
+  background: var(--background);
   color: var(--foreground);
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  letter-spacing: -0.005em;
+  overflow-x: hidden;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Monospace for data, numbers, codes, labels */
+.font-data,
+table,
+input[type="number"],
+input[type="date"] {
+  font-family: var(--font-mono), ui-monospace, "SFMono-Regular", monospace;
 }
-.custom-scrollbar::-webkit-scrollbar-track {
+
+/* ---- Ambient terminal backdrop layers (fixed, behind content) ---- */
+.terminal-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255, 176, 0, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 176, 0, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 30%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 30%, transparent 85%);
+}
+
+.terminal-bloom {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 50% -10%, rgba(255, 176, 0, 0.10) 0%, transparent 60%),
+    radial-gradient(40% 40% at 100% 0%, rgba(255, 138, 61, 0.05) 0%, transparent 55%);
+}
+
+.terminal-scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.012) 0px,
+    rgba(255, 255, 255, 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* ---- Scrollbar ---- */
+.custom-scrollbar::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
   background: transparent;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
+.custom-scrollbar::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
+/* ---- Glass / panel treatments ---- */
+.glass {
+  background: rgba(10, 10, 11, 0.72);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* Amber phosphor text glow */
+.text-glow {
+  text-shadow: 0 0 18px rgba(255, 176, 0, 0.45);
+}
+
+/* Hairline top-accent for panels */
 .gradient-border {
   position: relative;
-  background-clip: padding-box;
-  border: 1px solid transparent;
 }
 .gradient-border::before {
   content: "";
   position: absolute;
-  inset: 0;
-  z-index: -1;
-  margin: -1px;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(139, 92, 246, 0.2), transparent);
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 176, 0, 0.6), transparent);
 }
 
-.glass {
-  background: rgba(17, 28, 47, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+/* Ensure inputs are always legible */
+select,
+input[type="text"],
+input[type="number"],
+input[type="date"] {
+  color: var(--foreground);
+  background-color: var(--input-bg);
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1) opacity(0.6);
+  filter: invert(1) sepia(1) saturate(5) hue-rotate(5deg) opacity(0.7);
   cursor: pointer;
+}
+
+/* Blinking terminal cursor */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.cursor-blink::after {
+  content: "_";
+  color: var(--primary);
+  animation: blink 1.1s step-end infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .text-balance {

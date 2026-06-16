@@ -1,94 +1,95 @@
-# VectorBT Pro Dashboard
+# VectorBT // Backtesting Terminal
 
-A full-stack quantitative backtesting platform tailored for the Indian Market. It leverages [VectorBT](https://vectorbt.dev/) for high-performance vectorized backtesting and integrates natively with the **Fyers API** for fetching historical market data, featuring a seamless fallback to `yfinance`. 
+A full-stack quantitative backtesting platform for Indian equities. FastAPI backend powered by [VectorBT](https://vectorbt.dev/) + Next.js amber-phosphor terminal UI. Integrates with **Fyers API v3** for live OHLCV data with automatic `yfinance` fallback.
 
-The frontend is a modern, responsive dashboard built with **Next.js**, **TailwindCSS**, and **Recharts**.
-
-## 🌟 Features
-- 🚀 **High-Speed Backtesting**: Powered by VectorBT's vectorized engine.
-- 📈 **Indian Market Data**: Direct integration with Fyers API (v3) for accurate historical OHLCV data.
-- 🎨 **Beautiful UI**: Modern Next.js dashboard with interactive equity curves, drawdown charts, and a trade log.
-- 🔐 **Automated Auth**: Built-in helper script to easily generate and refresh Fyers access tokens.
-- ⚙️ **Dynamic Strategies**: Pluggable strategy system allowing you to easily add new algorithmic trading strategies.
+![VectorBT Terminal](docs/screenshot.png)
 
 ---
 
-## 🛠 Prerequisites
-- **Python 3.10+**
-- **Node.js 18+**
-- A **Fyers API account** (Get your `client_id` and `secret_key` from the [Fyers API Dashboard](https://api-dashboard.fyers.in/)).
+## Features
+
+- **Accurate backtesting** — NSE-realistic fee model (STT + exchange + stamp + SEBI + GST + brokerage), correct Sharpe annualization for intraday (94,500 trading min/yr) vs daily (252 days)
+- **Fyers API v3** — live OHLCV data for NSE equities; falls back to yfinance automatically
+- **Candlestick chart** — lightweight-charts OHLC with buy/sell markers per symbol
+- **Equity & drawdown curves** — portfolio-level Recharts area charts
+- **Per-symbol breakdown** — win rate, PnL, fees per symbol
+- **Trade log** — filterable table with entry/exit prices, fees, return %
+- **Pluggable strategies** — add new strategies by extending `BaseStrategy`
 
 ---
 
-## 🚀 Setup Instructions
+## Stack
 
-### 1. Backend Setup (FastAPI & VectorBT)
+| Layer | Tech |
+|-------|------|
+| Backend | Python 3.12, FastAPI, VectorBT, pandas |
+| Data | Fyers API v3, yfinance fallback, parquet cache |
+| Frontend | Next.js 14, Tailwind CSS, Recharts, lightweight-charts |
+| Package manager | uv |
 
-Open a terminal and navigate to the root directory.
+---
 
-```bash
-# Move to the backend folder
-cd backend
+## Setup
 
-# Create and activate a virtual environment
-python -m venv venv
+### Prerequisites
+- Python 3.12+ with [uv](https://docs.astral.sh/uv/)
+- Node.js 18+
+- Fyers API account ([dashboard](https://myapi.fyers.in/dashboard))
 
-# On Windows:
-.\venv\Scripts\activate
-# On Mac/Linux:
-source venv/bin/activate
+### Backend
 
-# Install dependencies
-pip install -r requirements.txt
-```
+```powershell
+# Install deps
+uv sync
 
-#### Fyers API Authentication
-1. In the `backend` folder, create a `.env` file (if it doesn't exist) with your Fyers credentials:
-```env
+# Create backend/.env
 FYERS_APP_ID=YOUR_APP_ID-100
 FYERS_SECRET_KEY=YOUR_SECRET_KEY
-FYERS_REDIRECT_URI=https://trade.fyers.in/api-login/redirect-uri/index.html
+FYERS_REDIRECT_URI=http://127.0.0.1:5000/
 FYERS_ACCESS_TOKEN=
+
+# Generate access token (opens browser, saves token to .env automatically)
+uv run python -m backend.fyers_auth_helper
+
+# Run server
+uv run uvicorn backend.main:app --reload --port 8000
 ```
-2. Run the provided helper script to generate your Access Token:
-```bash
-python fyers_auth_helper.py
-```
-3. Follow the instructions in the terminal. The script will automatically open your browser to log in to Fyers, ask for the `auth_code`, and update your `.env` file with a valid access token.
 
-#### Start the Backend Server
-From the **root of the project** (the `vectorBT` folder), run:
-```bash
-# We run from the root to ensure module imports (like `backend.main`) resolve correctly
-.\backend\venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+> Token expires daily ~08:00 IST. Re-run `fyers_auth_helper` to refresh. Missing token falls back to yfinance.
 
-# Or if activated:
-python -m uvicorn backend.main:app --reload
-```
-The API will run at `http://127.0.0.1:8000`.
+### Frontend
 
----
-
-### 2. Frontend Setup (Next.js)
-
-Open a **new terminal** and navigate to the frontend directory:
-
-```bash
+```powershell
 cd frontend
-
-# Install Node.js dependencies
 npm install
-
-# Start the development server
-npm run dev
+npm run dev   # http://localhost:3000
 ```
 
-The frontend dashboard will be available at [http://localhost:3000](http://localhost:3000).
+### Start both together
+
+```powershell
+.\run.ps1
+```
 
 ---
 
-## 🏗 Project Structure
+## Adding a Strategy
 
-- `/backend` - FastAPI server, VectorBT execution engine, and Fyers API client.
-- `/frontend` - Next.js React application, UI components, charts, and metrics cards.
-- `/strategies` - Custom Python trading strategies loaded dynamically by the backend (e.g., `pro_trader.py`).
+1. Create `strategies/my_strategy.py` extending `BaseStrategy`
+2. Implement `generate_signals(self) -> tuple[pd.DataFrame, pd.DataFrame]` — returns `(entries, exits)` boolean DataFrames with symbol columns
+3. Register in `backend/main.py`:
+   ```python
+   from strategies.my_strategy import MyStrategy
+   STRATEGY_MAP = { "my_strategy": MyStrategy, ... }
+   ```
+
+---
+
+## Project Structure
+
+```
+backend/        FastAPI app, VectorBT engine, Fyers client, data cache
+frontend/       Next.js SPA — three tabs: Overview, Symbols, Trades
+strategies/     Pluggable strategy modules (extend BaseStrategy)
+scripts/        Dev/ops utilities
+```

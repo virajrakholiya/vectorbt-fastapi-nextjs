@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, Wallet, BarChart3, PieChart, Activity, Download, Play,
-  Settings, Calendar, Coins, Tag, LayoutGrid, ListOrdered, Sparkles, ArrowUpRight,
+  Settings, Calendar, Coins, Tag, LayoutGrid, ListOrdered, Terminal, ArrowUpRight,
   ArrowDownRight, Target, Percent, CircleDollarSign, AlertTriangle, ClipboardCopy, Check,
 } from "lucide-react";
 import { TradingChart } from "@/components/TradingChart";
@@ -51,7 +51,7 @@ type StrategyMeta = {
   params: { name: string; label: string; type: string; default: number; min?: number; max?: number; step?: number }[];
 };
 
-const PALETTE = ["#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#ef4444", "#84cc16"];
+const PALETTE = ["#ffb000", "#2dd4bf", "#3ad07a", "#ff6b6b", "#7dd3fc", "#c2f04a", "#ff8a3d", "#f472b6"];
 
 const NSE_STOCKS = [
   // IT
@@ -324,40 +324,44 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
     : data?.charts?.markers ?? [];
 
   return (
-    <div className="space-y-6 pb-12 animate-fade-in">
+    <div className="space-y-5 pb-12 animate-fade-in">
       {/* Header */}
-      <header className="bg-card/80 glass border border-border rounded-2xl overflow-hidden">
-        <div className="p-6 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/30">
-              <Sparkles className="w-6 h-6 text-primary" />
+      <header className="bg-card/80 glass border border-border rounded-lg overflow-hidden shadow-panel">
+        <div className="p-5 md:p-6 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="grid place-items-center w-11 h-11 rounded-md bg-primary/10 border border-primary/40 shadow-glow">
+              <Terminal className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">VectorBT Pro</h1>
-              <p className="text-muted-foreground text-sm">Indian market quantitative backtesting</p>
+              <h1 className="font-mono text-xl font-bold tracking-tight text-foreground">
+                VECTORBT<span className="text-primary">::</span>TERMINAL
+              </h1>
+              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">
+                NSE Quantitative Backtesting
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={runBacktest}
               disabled={loading}
-              className="flex items-center gap-2 bg-primary hover:shadow-glow text-primary-foreground px-6 py-2.5 rounded-lg font-semibold transition-all disabled:opacity-50"
+              className="group flex items-center gap-2 bg-primary hover:shadow-glow text-primary-foreground px-6 py-2.5 rounded-md font-mono font-bold text-sm uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-wait"
             >
-              {loading ? <Activity className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              {loading ? "Running..." : "Run Backtest"}
+              {loading ? <Activity className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
+              {loading ? "Running" : "Run Backtest"}
             </button>
             <button
               onClick={copyReport}
               disabled={!data}
               title="Copy full backtest report (markdown) to clipboard — paste into ChatGPT / Claude for strategy improvement suggestions"
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+              className={`flex items-center gap-2 px-4 py-2.5 border rounded-md font-mono font-medium text-sm uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
                 copied
                   ? "bg-success/10 border-success/40 text-success"
-                  : "border-border hover:bg-muted text-foreground"
+                  : "border-border-strong hover:border-primary/50 hover:text-primary text-foreground"
               }`}
             >
               {copied ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
-              {copied ? "Copied!" : "Copy Report"}
+              {copied ? "Copied" : "Copy Report"}
             </button>
           </div>
         </div>
@@ -366,7 +370,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
         <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           <FieldWrapper icon={<Settings className="w-3.5 h-3.5" />} label="Strategy">
             <select
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary cursor-pointer w-full"
+              className="bg-muted/50 border border-border-strong rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary transition-colors cursor-pointer w-full"
               value={config.strategy_name}
               onChange={(e) => setConfig({ ...config, strategy_name: e.target.value })}
             >
@@ -386,7 +390,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
 
           <FieldWrapper icon={<Activity className="w-3.5 h-3.5" />} label="Timeframe">
             <select
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary cursor-pointer w-full"
+              className="bg-muted/50 border border-border-strong rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary transition-colors cursor-pointer w-full"
               value={config.timeframe}
               onChange={(e) => setConfig({ ...config, timeframe: e.target.value })}
             >
@@ -399,7 +403,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
           <FieldWrapper icon={<Calendar className="w-3.5 h-3.5" />} label="Start Date">
             <input
               type="date"
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
+              className="bg-muted/50 border border-border-strong rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary transition-colors w-full"
               value={config.start_date}
               max={config.end_date}
               onChange={(e) => setConfig({ ...config, start_date: e.target.value })}
@@ -409,7 +413,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
           <FieldWrapper icon={<Calendar className="w-3.5 h-3.5" />} label="End Date">
             <input
               type="date"
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
+              className="bg-muted/50 border border-border-strong rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary transition-colors w-full"
               value={config.end_date}
               min={config.start_date}
               max={new Date().toISOString().split("T")[0]}
@@ -422,7 +426,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
               type="number"
               min={1000}
               step={1000}
-              className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary w-full"
+              className="bg-muted/50 border border-border-strong rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary transition-colors w-full"
               value={config.initial_capital}
               onChange={(e) => setConfig({ ...config, initial_capital: Number(e.target.value) || 0 })}
             />
@@ -467,26 +471,32 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
 
         {currentStrategy && (
           <div className="px-6 pb-5 -mt-2">
-            <p className="text-xs text-muted-foreground italic">{currentStrategy.description}</p>
+            <p className="font-mono text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/40 pl-3">
+              <span className="text-primary/70">// </span>{currentStrategy.description}
+            </p>
           </div>
         )}
       </header>
 
       {error && (
-        <div className="bg-danger/10 border border-danger/40 p-4 rounded-xl text-danger flex items-center gap-3 animate-slide-up">
+        <div className="bg-danger/10 border border-danger/40 p-4 rounded-md text-danger flex items-center gap-3 animate-slide-up">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <div>
-            <p className="font-bold">Backtest Error</p>
-            <p className="text-sm opacity-90">{error}</p>
+            <p className="font-mono font-bold uppercase tracking-wider text-sm">Backtest Error</p>
+            <p className="font-mono text-sm opacity-90">{error}</p>
           </div>
         </div>
       )}
 
       {!data && !loading && !error && (
-        <div className="flex flex-col items-center justify-center py-32 bg-card border border-border rounded-3xl border-dashed">
-          <BarChart3 className="w-16 h-16 text-muted-foreground/30 mb-4" />
-          <h2 className="text-xl font-semibold">No Backtest Data</h2>
-          <p className="text-muted-foreground">Configure your parameters and click "Run Backtest"</p>
+        <div className="flex flex-col items-center justify-center py-32 bg-card border border-border border-dashed rounded-lg gradient-border relative">
+          <div className="grid place-items-center w-16 h-16 rounded-md border border-border-strong bg-muted/40 mb-5">
+            <BarChart3 className="w-7 h-7 text-primary/60" />
+          </div>
+          <h2 className="font-mono text-lg font-bold uppercase tracking-wider text-foreground">Awaiting Input</h2>
+          <p className="font-mono text-sm text-muted-foreground mt-1 cursor-blink">
+            Configure parameters &amp; execute backtest
+          </p>
         </div>
       )}
 
@@ -542,9 +552,9 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                className={`flex items-center gap-2 px-5 py-3 font-mono text-xs font-semibold uppercase tracking-[0.12em] border-b-2 -mb-px transition-all ${
                   activeTab === tab.id
-                    ? "border-primary text-primary"
+                    ? "border-primary text-primary text-glow"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -557,10 +567,10 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
           {activeTab === "overview" && (
             <div className="space-y-6">
               {/* Trading chart with symbol selector */}
-              <div className="bg-card border border-border p-6 rounded-2xl">
+              <div className="bg-card border border-border p-6 rounded-lg shadow-panel">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-primary" />
+                  <h3 className="font-mono text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-primary" />
                     Strategy Execution
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -568,10 +578,10 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
                       <button
                         key={sym}
                         onClick={() => setChartSymbol(sym)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                        className={`px-3 py-1.5 rounded-md font-mono text-xs font-bold uppercase tracking-wider border transition-all ${
                           chartSymbol === sym
                             ? "bg-primary text-primary-foreground border-primary shadow-glow"
-                            : "bg-background border-border text-muted-foreground hover:text-foreground"
+                            : "bg-muted/50 border-border-strong text-muted-foreground hover:text-primary hover:border-primary/50"
                         }`}
                       >
                         {sym}
@@ -584,17 +594,19 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
 
               {/* Combined equity curve (per-symbol) */}
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 bg-card border border-border p-6 rounded-2xl">
-                  <h3 className="text-lg font-bold mb-4">Equity Curve · Per Symbol</h3>
+                <div className="xl:col-span-2 bg-card border border-border p-6 rounded-lg shadow-panel">
+                  <h3 className="font-mono text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-primary" />Equity Curve · Per Symbol</h3>
                   <div className="h-[320px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={equityCombinedData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                        <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} minTickGap={40} />
-                        <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
+                        <CartesianGrid strokeDasharray="2 4" stroke="#1c1c1f" vertical={false} />
+                        <XAxis dataKey="date" stroke="#71716f" fontSize={11} tickLine={false} axisLine={false} minTickGap={40} fontFamily="var(--font-mono)" />
+                        <YAxis stroke="#71716f" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} fontFamily="var(--font-mono)" />
                         <Tooltip
-                          contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
-                          labelStyle={{ color: "#94a3b8" }}
+                          contentStyle={{ backgroundColor: "#0a0a0b", border: "1px solid #2c2c30", borderRadius: "2px", fontFamily: "var(--font-mono)", fontSize: "12px" }}
+                          labelStyle={{ color: "#71716f" }}
+                          itemStyle={{ color: "#e9e7e0" }}
+                          cursor={{ stroke: "#ffb000", strokeOpacity: 0.3 }}
                           formatter={(v: number) => fmtCurrency(v, 0)}
                         />
                         <Legend wrapperStyle={{ paddingTop: "10px" }} />
@@ -613,19 +625,28 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
                   </div>
                 </div>
 
-                <div className="bg-card border border-border p-6 rounded-2xl">
-                  <h3 className="text-lg font-bold mb-4">Drawdown Profile</h3>
+                <div className="bg-card border border-border p-6 rounded-lg shadow-panel">
+                  <h3 className="font-mono text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2"><TrendingDown className="w-4 h-4 text-danger" />Drawdown Profile</h3>
                   <div className="h-[320px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={data.charts.drawdown}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                        <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} minTickGap={40} />
-                        <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v.toFixed(1)}%`} />
+                        <defs>
+                          <linearGradient id="ddFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ff4d4d" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#ff4d4d" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="2 4" stroke="#1c1c1f" vertical={false} />
+                        <XAxis dataKey="date" stroke="#71716f" fontSize={11} tickLine={false} axisLine={false} minTickGap={40} fontFamily="var(--font-mono)" />
+                        <YAxis stroke="#71716f" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v.toFixed(1)}%`} fontFamily="var(--font-mono)" />
                         <Tooltip
-                          contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: "8px" }}
+                          contentStyle={{ backgroundColor: "#0a0a0b", border: "1px solid #2c2c30", borderRadius: "2px", fontFamily: "var(--font-mono)", fontSize: "12px" }}
+                          labelStyle={{ color: "#71716f" }}
+                          itemStyle={{ color: "#ff4d4d" }}
+                          cursor={{ stroke: "#ff4d4d", strokeOpacity: 0.3 }}
                           formatter={(v: number) => `${v.toFixed(2)}%`}
                         />
-                        <Area type="monotone" dataKey="value" stroke="#ef4444" fill="#ef4444" fillOpacity={0.15} />
+                        <Area type="monotone" dataKey="value" stroke="#ff4d4d" strokeWidth={1.5} fill="url(#ddFill)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -648,12 +669,12 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
           )}
 
           {activeTab === "trades" && (
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="bg-card border border-border rounded-lg overflow-hidden shadow-panel">
               <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <h3 className="text-lg font-bold">All Trades · {filteredTrades.length}</h3>
+                <h3 className="font-mono text-sm font-bold uppercase tracking-wider flex items-center gap-2"><ListOrdered className="w-4 h-4 text-primary" />All Trades · {filteredTrades.length}</h3>
                 <div className="flex flex-wrap gap-2">
                   <select
-                    className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary"
+                    className="bg-muted/50 border border-border-strong rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-primary"
                     value={tradesFilter}
                     onChange={(e) => setTradesFilter(e.target.value)}
                   >
@@ -662,12 +683,12 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
-                  <div className="flex bg-background border border-border rounded-lg overflow-hidden">
+                  <div className="flex bg-muted/50 border border-border-strong rounded-md overflow-hidden">
                     {(["all", "wins", "losses", "open"] as const).map((f) => (
                       <button
                         key={f}
                         onClick={() => setTradesPnLFilter(f)}
-                        className={`px-3 py-1.5 text-xs font-medium capitalize transition-all ${
+                        className={`px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-all ${
                           tradesPnLFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -679,20 +700,20 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
               </div>
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-sm">
-                  <thead className="bg-background/40">
-                    <tr className="text-left text-muted-foreground border-b border-border">
-                      <th className="py-3 px-4 font-medium">#</th>
-                      <th className="py-3 px-4 font-medium">Symbol</th>
-                      <th className="py-3 px-4 font-medium">Entry Date</th>
-                      <th className="py-3 px-4 font-medium">Exit Date</th>
-                      <th className="py-3 px-4 font-medium text-right">Entry ₹</th>
-                      <th className="py-3 px-4 font-medium text-right">Exit ₹</th>
-                      <th className="py-3 px-4 font-medium text-right">Qty</th>
-                      <th className="py-3 px-4 font-medium text-right">Trade Amount</th>
-                      <th className="py-3 px-4 font-medium text-right">P&L</th>
-                      <th className="py-3 px-4 font-medium text-right">Return</th>
-                      <th className="py-3 px-4 font-medium text-right">Fees</th>
-                      <th className="py-3 px-4 font-medium">Status</th>
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr className="text-left text-muted-foreground border-b border-border-strong font-mono text-[10px] uppercase tracking-[0.12em]">
+                      <th className="py-3 px-4 font-semibold">#</th>
+                      <th className="py-3 px-4 font-semibold">Symbol</th>
+                      <th className="py-3 px-4 font-semibold">Entry Date</th>
+                      <th className="py-3 px-4 font-semibold">Exit Date</th>
+                      <th className="py-3 px-4 font-semibold text-right">Entry ₹</th>
+                      <th className="py-3 px-4 font-semibold text-right">Exit ₹</th>
+                      <th className="py-3 px-4 font-semibold text-right">Qty</th>
+                      <th className="py-3 px-4 font-semibold text-right">Trade Amount</th>
+                      <th className="py-3 px-4 font-semibold text-right">P&L</th>
+                      <th className="py-3 px-4 font-semibold text-right">Return</th>
+                      <th className="py-3 px-4 font-semibold text-right">Fees</th>
+                      <th className="py-3 px-4 font-semibold">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -867,7 +888,7 @@ function SymbolMultiSelect({ value, onChange }: { value: string[]; onChange: (v:
 function FieldWrapper({ icon, label, children }: { icon?: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium uppercase tracking-wide">
+      <label className="text-[10px] text-muted-foreground flex items-center gap-1.5 font-mono font-semibold uppercase tracking-[0.18em]">
         {icon}
         {label}
       </label>
@@ -880,36 +901,39 @@ function HeroCard({
   title, value, icon: Icon, tone, hint,
 }: { title: string; value: string; icon: any; tone: "success" | "danger" | "primary" | "warning"; hint?: string }) {
   const toneMap = {
-    success: { bg: "bg-success/10", text: "text-success", border: "border-success/20" },
-    danger: { bg: "bg-danger/10", text: "text-danger", border: "border-danger/20" },
-    primary: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20" },
-    warning: { bg: "bg-warning/10", text: "text-warning", border: "border-warning/20" },
+    success: { bg: "bg-success/10", text: "text-success", border: "border-success/30", glow: "rgba(58,208,122,0.4)" },
+    danger: { bg: "bg-danger/10", text: "text-danger", border: "border-danger/30", glow: "rgba(255,77,77,0.4)" },
+    primary: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/30", glow: "rgba(255,176,0,0.4)" },
+    warning: { bg: "bg-warning/10", text: "text-warning", border: "border-warning/30", glow: "rgba(255,138,61,0.4)" },
   }[tone];
 
   return (
-    <div className={`bg-card border ${toneMap.border} p-5 rounded-2xl relative overflow-hidden`}>
-      <div className="absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-10 blur-2xl" style={{ backgroundColor: "currentColor" }} />
+    <div className={`group bg-card border ${toneMap.border} p-5 rounded-lg relative overflow-hidden shadow-panel hover:bg-card-elevated transition-colors`}>
+      <div
+        className="absolute -top-10 -right-10 w-28 h-28 rounded-full opacity-20 blur-3xl transition-opacity group-hover:opacity-40"
+        style={{ backgroundColor: toneMap.glow }}
+      />
       <div className="flex items-start justify-between mb-3 relative">
-        <span className="text-muted-foreground text-sm font-medium">{title}</span>
-        <div className={`p-2 rounded-lg ${toneMap.bg}`}>
+        <span className="text-[10px] text-muted-foreground font-mono font-semibold uppercase tracking-[0.18em]">{title}</span>
+        <div className={`grid place-items-center w-8 h-8 rounded-md border border-border-strong ${toneMap.bg}`}>
           <Icon className={`w-4 h-4 ${toneMap.text}`} />
         </div>
       </div>
-      <div className="text-2xl font-bold tracking-tight">{value}</div>
-      {hint && <div className="text-xs text-muted-foreground mt-1">{hint}</div>}
+      <div className={`font-mono text-[28px] leading-none font-bold tracking-tight ${toneMap.text}`}>{value}</div>
+      {hint && <div className="font-mono text-[11px] text-muted-foreground mt-2">{hint}</div>}
     </div>
   );
 }
 
 function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: any; tone?: string }) {
   return (
-    <div className="bg-card border border-border p-4 rounded-xl flex items-center gap-3">
-      <div className="p-2 rounded-lg bg-muted">
-        <Icon className={`w-4 h-4 ${tone === "danger" ? "text-danger" : "text-muted-foreground"}`} />
+    <div className="bg-card border border-border p-4 rounded-lg flex items-center gap-3 hover:border-border-strong transition-colors">
+      <div className="grid place-items-center w-9 h-9 rounded-md bg-muted border border-border-strong">
+        <Icon className={`w-4 h-4 ${tone === "danger" ? "text-danger" : "text-primary/70"}`} />
       </div>
-      <div>
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-lg font-bold">{value}</div>
+      <div className="min-w-0">
+        <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-[0.15em] truncate">{label}</div>
+        <div className="font-mono text-lg font-bold">{value}</div>
       </div>
     </div>
   );
@@ -918,15 +942,18 @@ function MiniStat({ label, value, icon: Icon, tone }: { label: string; value: st
 function SymbolCard({ breakdown: b, accent }: { breakdown: SymbolBreakdown; accent: string }) {
   const profitable = b.total_pnl >= 0;
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-all relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: accent }} />
+    <div className="bg-card border border-border rounded-lg p-5 hover:border-primary/40 hover:bg-card-elevated transition-all relative overflow-hidden shadow-panel">
+      <div className="absolute top-0 left-0 w-full h-px" style={{ backgroundColor: accent, boxShadow: `0 0 12px ${accent}` }} />
       <div className="flex items-center justify-between mb-4">
-        <h4 className="text-lg font-bold">{b.symbol}</h4>
-        <div className={`text-xl font-bold ${profitable ? "text-success" : "text-danger"}`}>
+        <h4 className="font-mono text-base font-bold tracking-wide flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />
+          {b.symbol}
+        </h4>
+        <div className={`font-mono text-lg font-bold ${profitable ? "text-success" : "text-danger"}`}>
           {profitable ? "+" : ""}{fmtCurrency(b.total_pnl, 0)}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 text-sm">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <Stat label="Trades" value={b.total_trades} />
         <Stat label="Win Rate" value={fmtPct(b.win_rate, 1)} tone={b.win_rate >= 50 ? "success" : "danger"} />
         <Stat label="Wins / Losses" value={`${b.winning_trades} / ${b.losing_trades}`} />
@@ -941,11 +968,11 @@ function SymbolCard({ breakdown: b, accent }: { breakdown: SymbolBreakdown; acce
 }
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "success" | "danger" }) {
-  const toneClass = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "";
+  const toneClass = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-foreground";
   return (
-    <div className="space-y-0.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`font-semibold ${toneClass}`}>{value}</div>
+    <div className="space-y-1">
+      <div className="text-[10px] text-muted-foreground font-mono uppercase tracking-[0.12em]">{label}</div>
+      <div className={`font-mono font-semibold ${toneClass}`}>{value}</div>
     </div>
   );
 }

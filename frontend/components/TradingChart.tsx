@@ -16,22 +16,30 @@ export function TradingChart({ data, markers = [] }: { data: any[], markers?: an
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#cbd5e1",
+        textColor: "#71716f",
+        fontFamily: "var(--font-mono), monospace",
+        fontSize: 11,
       },
       grid: {
-        vertLines: { color: "#1e293b" },
-        horzLines: { color: "#1e293b" },
+        vertLines: { color: "rgba(255,176,0,0.04)" },
+        horzLines: { color: "#1c1c1f" },
       },
+      crosshair: {
+        vertLine: { color: "#ffb000", width: 1, style: 2, labelBackgroundColor: "#ffb000" },
+        horzLine: { color: "#ffb000", width: 1, style: 2, labelBackgroundColor: "#ffb000" },
+      },
+      rightPriceScale: { borderColor: "#1c1c1f" },
+      timeScale: { borderColor: "#1c1c1f" },
       width: chartContainerRef.current.clientWidth,
       height: 400,
     });
 
     const candlestickSeries = chart.addCandlestickSeries({
-      upColor: "#22c55e",
-      downColor: "#ef4444",
+      upColor: "#3ad07a",
+      downColor: "#ff4d4d",
       borderVisible: false,
-      wickUpColor: "#22c55e",
-      wickDownColor: "#ef4444",
+      wickUpColor: "#3ad07a",
+      wickDownColor: "#ff4d4d",
     });
 
     const clean = data.filter(
