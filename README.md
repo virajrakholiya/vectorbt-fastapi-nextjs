@@ -2,7 +2,14 @@
 
 A full-stack quantitative backtesting platform for Indian equities. FastAPI backend powered by [VectorBT](https://vectorbt.dev/) + Next.js amber-phosphor terminal UI. Integrates with **Fyers API v3** for live OHLCV data with automatic `yfinance` fallback.
 
-![VectorBT Terminal](docs/screenshot.png)
+### Overview — equity curve, drawdown, candlestick chart
+![Overview](docs/screenshot_overview.png)
+
+### Per Symbol — win rate, PnL, fees per symbol
+![Per Symbol](docs/screenshot_per_symbol.png)
+
+### All Trades — filterable trade log
+![All Trades](docs/screenshot_trades.png)
 
 ---
 
