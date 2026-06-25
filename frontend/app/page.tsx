@@ -108,7 +108,7 @@ export default function Dashboard() {
   const [copied, setCopied] = useState(false);
 
   const [config, setConfig] = useState({
-    strategy_name: "pro_trader",
+    strategy_name: "intraday_scalper",
     symbols: ["RELIANCE", "TCS", "INFY"],
     timeframe: "1D",
     start_date: "2023-01-01",
@@ -374,7 +374,7 @@ ${equity.length === 0 ? "_No equity data._" : sampleArray(equity, 30).map((p: an
               value={config.strategy_name}
               onChange={(e) => setConfig({ ...config, strategy_name: e.target.value })}
             >
-              {strategies.length === 0 && <option value="sma_rsi">SMA + RSI</option>}
+              {strategies.length === 0 && <option value="intraday_scalper">Intraday Scalper (ORB + EMA + Pyramid)</option>}
               {strategies.map((s) => (
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
